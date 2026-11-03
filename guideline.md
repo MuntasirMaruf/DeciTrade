@@ -30,6 +30,9 @@ deci-trade/
 │   │   │   │   └── page.tsx        # Route: /registration (Business type selection & signup)
 │   │   │   └── onboarding/
 │   │   │       └── page.tsx        # Route: /onboarding (Step 2 business setup funnel)
+│   │   ├── wholesaler/     # Wholesaler portal routes
+│   │   │   └── dashboard/
+│   │   │       └── page.tsx        # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
 │   │   ├── favicon.ico
 │   │   ├── globals.css     # Global styles & Tailwind configuration
 │   │   ├── layout.tsx      # Root layout: Header + <main> + Footer
@@ -135,6 +138,7 @@ if (!EMAIL_REGEX.test(email)) {
 
 ### D. React Server Components (RSC) vs. Client Components
 - By default in the App Router, components are **Server Components**. They run on the server and send static HTML to the browser with zero client JavaScript bundle overhead.
+- Screens that merely display data without event listeners (like `wholesaler/dashboard/page.tsx`) remain Server Components.
 - Interactive screens requiring browser state (`useState`) or event listeners (`onSubmit`, `onClick`) specify `"use client";` at line 1.
 
 ---
@@ -167,7 +171,7 @@ if (!EMAIL_REGEX.test(email)) {
 
 ### 1. Root Layout
 - **Location**: `src/app/layout.tsx`
-- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), and establishes the sticky-footer flex column container.
+- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), and surrounds all pages with the persistent Header and Footer.
 - **Key Snippet**:
   ```tsx
   <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-black">
@@ -181,7 +185,7 @@ if (!EMAIL_REGEX.test(email)) {
 
 ### 2. Header
 - **Location**: `src/components/layout/Header.tsx`
-- **What it does**: Persistent dark top bar containing the `DT` brand badge linking to `/`, a "Sign In" link to `/login`, and a "Register" button to `/registration`.
+- **What it does**: Persistent dark top bar containing the `DT` brand logo linking to `/`, a "Sign In" link to `/login`, and a "Register" button to `/registration`.
 - **Key Snippet**:
   ```tsx
   <header className="sticky top-0 z-50 border-b border-zinc-800 bg-black">
@@ -309,4 +313,21 @@ if (!EMAIL_REGEX.test(email)) {
     <textarea id="delivery_address" name="delivery_address" required />
   )}
   <Link href="/login">Sign out and finish later</Link>
+  ```
+
+---
+
+### 10. Wholesaler Dashboard Page
+- **Location**: `src/app/wholesaler/dashboard/page.tsx`
+- **What it does**: A React Server Component portal for wholesalers displaying business performance metrics (Total Orders, Active Retailers, Gross Revenue) and warehouse dispatch status.
+- **Key Snippet**:
+  ```tsx
+  export default function WholesalerDashboardPage() {
+    return (
+      <div className="mx-auto w-full max-w-6xl px-6 py-10">
+        <h1 className="text-3xl font-extrabold tracking-tight">Business Dashboard</h1>
+        {/* Metric cards grid */}
+      </div>
+    );
+  }
   ```
