@@ -2,31 +2,32 @@ import Link from "next/link";
 
 export default function Header() {
     return (
-        <header className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-black/80 sticky top-0 z-50">
-            <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-                {/* Brand / Logo */}
-                <Link href="/" className="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-                    Deci<span className="text-blue-600">Trade</span>
+        <header className="sticky top-0 z-50 border-b border-zinc-800 bg-black">
+            <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+                {/* Brand / Logo with Badge */}
+                <Link href="/" className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black tracking-wider text-black">
+                        DT
+                    </div>
+                    <span className="text-lg font-bold tracking-tight text-white">
+                        DeciTrade
+                    </span>
                 </Link>
 
-                {/* Navigation links */}
-                <nav className="flex items-center gap-6 text-sm font-medium text-zinc-600 dark:text-zinc-400">
-                    <Link href="/" className="hover:text-zinc-950 dark:hover:text-zinc-50 transition-colors">
-                        Home
+                {/* Right Actions: Sign In & Register */}
+                <div className="flex items-center gap-5">
+                    <Link
+                        href="/login"
+                        className="text-sm font-medium text-zinc-300 hover:text-white transition-colors"
+                    >
+                        Sign In
                     </Link>
-                    <Link href="/markets" className="hover:text-zinc-950 dark:hover:text-zinc-50 transition-colors">
-                        Markets
+                    <Link
+                        href="/registration"
+                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
+                    >
+                        Register
                     </Link>
-                    <Link href="/dashboard" className="hover:text-zinc-950 dark:hover:text-zinc-50 transition-colors">
-                        Dashboard
-                    </Link>
-                </nav>
-
-                {/* Action Button */}
-                <div>
-                    <button className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200 transition-colors">
-                        Connect
-                    </button>
                 </div>
             </div>
         </header>
