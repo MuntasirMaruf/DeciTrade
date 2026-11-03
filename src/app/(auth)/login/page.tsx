@@ -3,12 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+    const router = useRouter();
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isSuccess, setIsSuccess] = useState(false);
 
     const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,11 +41,7 @@ export default function LoginPage() {
 
         setIsLoading(true);
 
-        // Simulate authentication check
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        setIsLoading(false);
-        setIsSuccess(true);
+        router.push("/wholesaler/dashboard");
     }
 
     return (
@@ -58,15 +55,6 @@ export default function LoginPage() {
                 </p>
             </div>
 
-            {isSuccess && (
-                <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-md text-sm text-emerald-800 dark:text-emerald-300 text-center">
-                    Signed in successfully!{" "}
-                    <Link href="/" className="font-bold underline ml-1">
-                        Go to Homepage &rarr;
-                    </Link>
-                </div>
-            )}
-
             {error && (
                 <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md flex items-start gap-2.5 text-sm text-red-700 dark:text-red-400">
                     <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -74,7 +62,7 @@ export default function LoginPage() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            <form onSubmit={handleSubmit} onChange={() => setError(null)} noValidate className="space-y-4">
                 <div>
                     <label
                         htmlFor="email"

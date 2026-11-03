@@ -24,3 +24,25 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+
+/* Autofill: light mode */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #171717;               /* neutral-900 */
+  -webkit-box-shadow: 0 0 0 1000px #fafafa inset; /* neutral-50 */
+  caret-color: #171717;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Autofill: dark mode */
+@media (prefers-color-scheme: dark) {
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #f5f5f5;               /* neutral-100 */
+    -webkit-box-shadow: 0 0 0 1000px #262626 inset; /* neutral-800 */
+    caret-color: #f5f5f5;
+  }
+}

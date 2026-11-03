@@ -25,7 +25,7 @@ deci-trade/
 │   │   ├── (auth)/         # Route Group: omitted from URL
 │   │   │   ├── layout.tsx  # Nested layout: centered card container for auth screens
 │   │   │   ├── login/
-│   │   │   │   └── page.tsx        # Route: /login (Sign In form with regex validation)
+│   │   │   │   └── page.tsx        # Route: /login (Sign In form with regex validation & redirect)
 │   │   │   ├── registration/
 │   │   │   │   └── page.tsx        # Route: /registration (Business type selection & signup)
 │   │   │   └── onboarding/
@@ -93,7 +93,6 @@ const [state, setState] = useState(initialValue);
    ```tsx
    const [isLoading, setIsLoading] = useState(false);
    const [error, setError] = useState<string | null>(null);
-   const [isSuccess, setIsSuccess] = useState(false);
    ```
 
 ---
@@ -130,16 +129,29 @@ if (!EMAIL_REGEX.test(email)) {
 
 ---
 
-### C. Declarative Navigation with `next/link`
-- All navigation across pages is handled declaratively with `<Link href="...">` tags.
-- `<Link>` executes client-side soft transitions with prefetching and zero browser reloads.
+### C. Navigation: Declarative `<Link>` vs. Programmatic `useRouter()`
+
+Next.js provides two ways to navigate:
+1. **Declarative Navigation (`<Link href="...">`)**:
+   - Used when the **user clicks** a link or button.
+   - Example: Navigating from the Header to `/login`, or from Login to `/registration`.
+2. **Programmatic Navigation (`useRouter().push(...)`)**:
+   - Used when your **code decides to navigate automatically** after an action completes.
+   - Example: After successful login verification, the code redirects the user to their portal:
+     ```tsx
+     import { useRouter } from "next/navigation";
+
+     const router = useRouter();
+     // Inside handleSubmit after auth succeeds:
+     router.push("/wholesaler/dashboard");
+     ```
 
 ---
 
 ### D. React Server Components (RSC) vs. Client Components
 - By default in the App Router, components are **Server Components**. They run on the server and send static HTML to the browser with zero client JavaScript bundle overhead.
 - Screens that merely display data without event listeners (like `wholesaler/dashboard/page.tsx`) remain Server Components.
-- Interactive screens requiring browser state (`useState`) or event listeners (`onSubmit`, `onClick`) specify `"use client";` at line 1.
+- Interactive screens requiring browser state (`useState`), programmatic routing (`useRouter`), or event listeners (`onSubmit`, `onClick`) specify `"use client";` at line 1.
 
 ---
 
@@ -270,15 +282,17 @@ if (!EMAIL_REGEX.test(email)) {
   - Sign-in form with client-side email and password validation.
   - Password visibility toggle (`Eye` / `EyeOff`) driven by local `useState`.
   - Disables default browser popups using `noValidate`.
+  - Automatically redirects to `/wholesaler/dashboard` via `useRouter().push()` upon successful submission.
 - **Key Snippet**:
   ```tsx
-  <form onSubmit={handleSubmit} noValidate className="space-y-4">
-    <input id="email" name="email" type="email" required />
-    <input id="password" name="password" type={showPassword ? "text" : "password"} required />
-    <button type="button" onClick={() => setShowPassword(!showPassword)}>
-      {showPassword ? <EyeOff /> : <Eye />}
-    </button>
-  </form>
+  const router = useRouter();
+
+  async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
+    e.preventDefault();
+    // Validate email & password...
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    router.push("/wholesaler/dashboard");
+  }
   ```
 
 ---
