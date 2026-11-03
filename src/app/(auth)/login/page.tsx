@@ -10,22 +10,38 @@ export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
 
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
     async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault();
         setError(null);
-        setIsLoading(true);
+
 
         const formData = new FormData(e.currentTarget);
+        const email = (formData.get("email") as string).trim();
         const password = formData.get("password") as string;
+
+        if (!email) {
+            setError("Email is required.");
+            return;
+        }
+        if (!EMAIL_REGEX.test(email)) {
+            setError("Please enter a valid email address.");
+            return;
+        }
+        if (!password) {
+            setError("Password is required.");
+            return;
+        }
+        if (password.length < 6) {
+            setError("Invalid credentials. Password must be at least 6 characters.");
+            return;
+        }
+
+        setIsLoading(true);
 
         // Simulate authentication check
         await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        if (password.length < 6) {
-            setError("Invalid credentials. Password must be at least 6 characters.");
-            setIsLoading(false);
-            return;
-        }
 
         setIsLoading(false);
         setIsSuccess(true);
@@ -58,7 +74,7 @@ export default function LoginPage() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate className="space-y-4">
                 <div>
                     <label
                         htmlFor="email"

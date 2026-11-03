@@ -14,6 +14,7 @@ import {
     Loader2,
     AlertCircle,
 } from "lucide-react";
+import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "@/lib/validator";
 
 type UserRole = "WHOLESALER" | "RETAILER";
 
@@ -27,19 +28,48 @@ export default function RegistrationPage() {
     async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault();
         setError(null);
-        setIsLoading(true);
 
         const formData = new FormData(e.currentTarget);
+        const businessName = (formData.get("business_name") as string).trim();
+        const phone = (formData.get("phone_number") as string).trim();
+        const email = (formData.get("email") as string).trim();
         const password = formData.get("password") as string;
+
+        if (!businessName) {
+            setError("Business name is required.");
+            return;
+        }
+        if (!phone) {
+            setError("Phone number is required.");
+            return;
+        }
+        if (!PHONE_REGEX.test(phone)) {
+            setError("Please enter a valid phone number.");
+            return;
+        }
+        if (!email) {
+            setError("Email is required.");
+            return;
+        }
+        if (!EMAIL_REGEX.test(email)) {
+            setError("Please enter a valid email address.");
+            return;
+        }
+        if (!password) {
+            setError("Password is required.");
+            return;
+        }
+        if (!PASSWORD_REGEX.test(password)) {
+            setError(
+                "Password must be at least 8 characters and include an uppercase letter, a lowercase letter, a number, and a special character."
+            );
+            return;
+        }
+
+        setIsLoading(true);
 
         // Simulate account creation
         await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        if (password.length < 6) {
-            setError("Password must be at least 6 characters.");
-            setIsLoading(false);
-            return;
-        }
 
         setIsLoading(false);
         setIsSuccess(true);
@@ -132,7 +162,7 @@ export default function RegistrationPage() {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-3.5">
+            <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
                 <input type="hidden" name="role" value={selectedRole} />
 
                 <div>
