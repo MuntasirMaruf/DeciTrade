@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Mail, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import Button from "@/components/ui/Button";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -125,20 +126,9 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full mt-2 py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 dark:text-neutral-900 text-white text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
-                >
-                    {isLoading ? (
-                        <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Signing in...</span>
-                        </>
-                    ) : (
-                        <span>Sign In</span>
-                    )}
-                </button>
+                <Button type="submit" isLoading={isLoading} className="mt-2">
+                    Sign In
+                </Button>
             </form>
 
             <div className="mt-6 text-center text-xs text-neutral-500 dark:text-neutral-400">

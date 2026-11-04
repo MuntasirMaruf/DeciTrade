@@ -40,10 +40,12 @@ deci-trade/
 │   ├── components/         # Reusable React components
 │   │   ├── dashboard/      # Portal & analytics components
 │   │   │   └── StateCard.tsx   # Reusable metric card with TypeScript props
-│   │   └── layout/         # Persistent structural components
-│   │       ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
-│   │       ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
-│   │       └── Footer.tsx      # Global footer with dynamic year & links
+│   │   ├── layout/         # Persistent structural components
+│   │   │   ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
+│   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
+│   │   │   └── Footer.tsx      # Global footer with dynamic year & links
+│   │   └── ui/             # Reusable design system primitives
+│   │       └── Button.tsx      # Reusable button with variants and loading state
 │   └── lib/                # Shared utilities & validators
 │       └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
 ├── guideline.md            # Living architecture & implementation documentation
@@ -171,6 +173,36 @@ Next.js provides two ways to navigate:
 ### H. React 19 Form Submission (`SubmitEvent`)
 - React 19 deprecated `FormEvent` in favor of standard DOM event types.
 - Form submissions use `React.SubmitEvent<HTMLFormElement>`. Specifying `<HTMLFormElement>` ensures `e.currentTarget` is fully typed for extracting values with `new FormData(e.currentTarget)`.
+
+---
+
+### I. Design Tokens & Theme Architecture (Tailwind CSS v4)
+- **Token Hierarchy**: Uses CSS Custom Properties (`--background`, `--foreground`, `--primary`, `--border`, `--muted`, `--destructive`) defined on `:root` and overridden in `@media (prefers-color-scheme: dark)`.
+- **CSS-First Theme Registration**: Registered via `@theme inline` in `src/app/globals.css`, generating utility classes like `bg-primary`, `text-primary-foreground`, and `border-border`.
+- **Zero-FOUC Dark Mode**: Theme switches happen directly at the CSS engine level without requiring JavaScript runtime execution or React context re-renders.
+
+---
+
+### J. HTML Element Inheritance, Props Spreading & Button Types
+When building reusable UI primitives (e.g. `src/components/ui/Button.tsx`):
+
+#### 1. Interface Inheritance (`extends React.ButtonHTMLAttributes<HTMLButtonElement>`)
+Instead of manually defining props for `type`, `disabled`, `onClick`, `aria-label`, etc., extending native attributes inherits all standard HTML attributes with strict compile-time typing and IDE autocomplete:
+```tsx
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "outline";
+  isLoading?: boolean;
+}
+```
+
+#### 2. Rest Parameters (`...props`) & Spread Operator (`{...props}`)
+- **Rest Parameter**: `function Button({ children, variant, isLoading, ...props }: ButtonProps)` unpacks custom props into local variables and bundles all remaining attributes into a `props` object.
+- **JSX Spread**: `<button {...props}>` forwards every attribute (`type="submit"`, `id`, `onClick`, `form`) directly onto the DOM `<button>` element.
+
+#### 3. HTML Button Type Semantics
+- **Inside `<form>` (Default Behavior)**: According to the HTML specification, any `<button>` inside a `<form>` without an explicit `type` defaults to `type="submit"`. Clicking it triggers form submission.
+- **Form Cancellation / Steppers**: To create non-submitting action buttons inside a form (e.g., Cancel, Back, Toggle Password), you must explicitly specify `type="button"`.
+- **Outside `<form>`**: `<Button onClick={handleClick}>` functions as a standard click action without form submission behavior.
 
 ---
 
@@ -411,3 +443,42 @@ Next.js provides two ways to navigate:
     ))}
   </div>
   ```
+
+---
+
+### 13. Reusable Button Component
+- **Location**: `src/components/ui/Button.tsx`
+- **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), an integrated loading spinner state (`isLoading`), and prop spreading (`...props`).
+- **Key Snippet**:
+  ```tsx
+  export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+    variant?: "primary" | "secondary" | "outline";
+    isLoading?: boolean;
+  }
+
+  export default function Button({
+    children,
+    variant = "primary",
+    isLoading = false,
+    disabled,
+    className = "",
+    ...props
+  }: ButtonProps) {
+    const baseStyles = "w-full py-2.5 px-4 text-sm font-semibold rounded-[var(--radius)] ...";
+    const variantStyles = {
+      primary: "bg-primary text-primary-foreground hover:opacity-90",
+      secondary: "bg-muted text-foreground hover:opacity-80",
+      outline: "border border-border text-foreground hover:bg-muted",
+    };
+
+    return (
+      <button disabled={disabled || isLoading} className={`${baseStyles} ${variantStyles[variant]} ${className}`} {...props}>
+        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : children}
+      </button>
+    );
+  }
+  ```
+- **Usage Patterns**:
+  - **Form Submit**: `<Button type="submit" isLoading={isLoading}>Sign In</Button>`
+  - **Form Action (Non-submitting)**: `<Button type="button" variant="outline" onClick={handleCancel}>Cancel</Button>`
+  - **General Click**: `<Button variant="secondary" onClick={handleRefresh}>Refresh</Button>`

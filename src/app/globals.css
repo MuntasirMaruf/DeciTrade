@@ -1,48 +1,116 @@
 @import "tailwindcss";
 
+/* -------------------------------------------------------------------------- */
+/* Design Tokens: 1. Light Mode (Default)                                     */
+/* -------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --radius: 0.5rem; /* 8px default radius */
+
+  /* Surface & Base */
+  --background: #ffffff;
+  --foreground: #09090b; /* near black (zinc-950) */
+  --card: #ffffff;
+  --card-foreground: #09090b;
+
+  /* Primary Interactive (CTAs, solid buttons) */
+  --primary: #18181b; /* zinc-900 */
+  --primary-foreground: #fafafa; /* zinc-50 */
+
+  /* Muted & Secondary Elements */
+  --muted: #f4f4f5; /* zinc-100 */
+  --muted-foreground: #71717a; /* zinc-500 */
+
+  /* Borders & Inputs */
+  --border: #e4e4e7; /* zinc-200 */
+  --input: #e4e4e7;
+
+  /* Brand Accent & Feedback */
+  --accent: #10b981; /* emerald-500 */
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444; /* red-500 */
 }
 
+/* -------------------------------------------------------------------------- */
+/* Design Tokens: 2. Dark Mode Override                                       */
+/* -------------------------------------------------------------------------- */
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Surface & Base */
+    --background: #09090b; /* zinc-950 */
+    --foreground: #fafafa; /* zinc-50 */
+    --card: #121215;
+    --card-foreground: #fafafa;
+
+    /* Primary Interactive (Inverts to white CTA in dark mode) */
+    --primary: #fafafa;
+    --primary-foreground: #18181b;
+
+    /* Muted & Secondary Elements */
+    --muted: #27272a; /* zinc-800 */
+    --muted-foreground: #a1a1aa; /* zinc-400 */
+
+    /* Borders & Inputs */
+    --border: #27272a; /* zinc-800 */
+    --input: #27272a;
+
+    /* Brand Accent & Feedback */
+    --accent: #10b981;
+    --accent-foreground: #ffffff;
+    --destructive: #f87171; /* red-400 */
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* 3. Tailwind CSS v4 Theme Registration                                      */
+/* -------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --radius-base: var(--radius);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 4. Base HTML Typography & Body                                             */
+/* -------------------------------------------------------------------------- */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
-
-/* Autofill: light mode */
+/* -------------------------------------------------------------------------- */
+/* 5. Custom Autofill Styles (Light & Dark)                                   */
+/* -------------------------------------------------------------------------- */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #171717;               /* neutral-900 */
-  -webkit-box-shadow: 0 0 0 1000px #fafafa inset; /* neutral-50 */
-  caret-color: #171717;
+  -webkit-text-fill-color: #09090b;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
+  caret-color: #09090b;
   transition: background-color 9999s ease-in-out 0s;
 }
 
-/* Autofill: dark mode */
 @media (prefers-color-scheme: dark) {
   input:-webkit-autofill,
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #f5f5f5;               /* neutral-100 */
-    -webkit-box-shadow: 0 0 0 1000px #262626 inset; /* neutral-800 */
-    caret-color: #f5f5f5;
+    -webkit-text-fill-color: #fafafa;
+    -webkit-box-shadow: 0 0 0 1000px #121215 inset;
+    caret-color: #fafafa;
   }
 }
