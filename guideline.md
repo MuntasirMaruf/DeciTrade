@@ -239,6 +239,12 @@ Register CSS variables into Tailwind's utility generation engine:
 ```
 - **Result**: Generates utility classes (`bg-background`, `text-foreground`, `bg-primary`, `border-border`) that automatically swap colors when the `.dark` class toggles without requiring React re-renders.
 
+#### 4. Zero-Blink Theme Synchronization Architecture
+- **Eliminating Hydration Pop-In**: Traditional client-only mounting patterns (e.g. `if (!mounted) return <Button className="opacity-0">`) cause a visible flicker on browser refresh while React hydrates.
+- **Synchronous `<head>` Script (`src/app/layout.tsx`)**: Placing an inline `<script>` directly in `<head>` executes synchronously before the browser paints the document, attaching the `.dark` class to `<html>` prior to the first pixel render.
+- **`suppressHydrationWarning` on `<html>`**: Prevents Next.js console warnings when the inline script modifies `<html class="dark">` before React completes hydration.
+- **Pure CSS Icon Toggling (`ThemeToggle.tsx`)**: Both `<Moon />` (`dark:hidden`) and `<Sun />` (`hidden dark:block`) are rendered inside the button from millisecond zero. CSS toggles visibility instantly based on the presence of `.dark` without React state delays.
+
 ---
 
 ### J. HTML Element Inheritance, Props Spreading & Button Architecture
@@ -289,13 +295,22 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 1. Root Layout
 - **Location**: `src/app/layout.tsx`
-- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), and establishes the sticky-footer shell with `<main>` and `<Footer />`.
+- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), executes early synchronous theme determination in `<head>` to prevent FOUC, and establishes the sticky-footer shell with `<main>` and `<Footer />`.
 - **Key Snippet**:
   ```tsx
-  <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-black">
-    <main className="flex flex-1 flex-col">{children}</main>
-    <Footer />
-  </body>
+  <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <head>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `try{if(localStorage.theme==='dark'||(!('theme' in localStorage)&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}else{document.documentElement.classList.remove('dark')}}catch(_){}`,
+        }}
+      />
+    </head>
+    <body className="min-h-full flex flex-col">
+      <main className="flex flex-1 flex-col">{children}</main>
+      <Footer />
+    </body>
+  </html>
   ```
 
 ---
@@ -591,46 +606,30 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 14. Theme Toggle Component
 - **Location**: `src/components/ui/ThemeToggle.tsx`
-- **What it does**: Client Component that toggles dark/light theme on `document.documentElement` (`<html class="dark">`), persists choice in `localStorage`, and prevents hydration layout flash using a client `mounted` check.
+- **What it does**: Client Component that toggles the `.dark` class on `document.documentElement` (`<html>`), persists user choice in `localStorage`, and uses pure CSS toggling (`dark:hidden` / `hidden dark:block`) to eliminate hydration delays and icon pop-in.
 - **Key Snippet**:
   ```tsx
   "use client";
 
-  import { useEffect, useState } from "react";
   import { Sun, Moon } from "lucide-react";
   import Button from "@/components/ui/Button";
 
   export default function ThemeToggle() {
-    const [isDark, setIsDark] = useState(false);
-    const [mounted, setMounted] = useState(false);
-
-    useEffect(() => {
-      setMounted(true);
-      const saved = localStorage.getItem("theme");
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const active = saved === "dark" || (!saved && prefersDark);
-      setIsDark(active);
-      document.documentElement.classList.toggle("dark", active);
-    }, []);
-
     function toggleTheme() {
-      const next = !isDark;
-      setIsDark(next);
-      document.documentElement.classList.toggle("dark", next);
-      localStorage.setItem("theme", next ? "dark" : "light");
-    }
-
-    if (!mounted) {
-      return (
-        <Button type="button" size="icon" variant="outline" aria-label="Toggle theme" className="opacity-0">
-          <Moon className="w-4 h-4" />
-        </Button>
-      );
+      const isDark = document.documentElement.classList.toggle("dark");
+      localStorage.setItem("theme", isDark ? "dark" : "light");
     }
 
     return (
-      <Button type="button" size="icon" variant="outline" onClick={toggleTheme} aria-label="Toggle theme">
-        {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-400" />}
+      <Button
+        type="button"
+        size="icon"
+        variant="outline"
+        onClick={toggleTheme}
+        aria-label="Toggle theme"
+      >
+        <Moon className="w-4 h-4 text-zinc-400 dark:hidden" />
+        <Sun className="w-4 h-4 text-amber-400 hidden dark:block" />
       </Button>
     );
   }
