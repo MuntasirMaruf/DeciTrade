@@ -39,7 +39,7 @@ deci-trade/
 │   │   └── page.tsx        # Homepage route: / (renders SiteHeader + Hero)
 │   ├── components/         # Reusable React components
 │   │   ├── dashboard/      # Portal & analytics components
-│   │   │   └── StatCard.tsx    # Reusable metric card with TypeScript props
+│   │   │   └── StateCard.tsx   # Reusable metric card with TypeScript props
 │   │   └── layout/         # Persistent structural components
 │   │       ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
 │   │       ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
@@ -77,6 +77,15 @@ function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
 ```
 - **Type Safety**: Defining an `interface` guarantees that the parent must pass the exact required types, preventing missing data bugs at compile time.
 - **Unidirectional Flow**: Data only flows downwards from parent to child.
+
+#### Prop Aliasing & JSX Capitalization (`icon: Icon`):
+In [`src/components/dashboard/StateCard.tsx`](src/components/dashboard/StateCard.tsx), the icon prop is destructured with a rename:
+```tsx
+export default function StatCard({ title, value, change, icon: Icon }: StatCardProps)
+```
+1. **JSX Capitalization Rule**: In React/JSX, tags starting with a lowercase letter (e.g. `<icon />`, `<div>`, `<span>`) are treated by JSX compilers as built-in HTML/DOM elements. If written as `<icon className="w-4 h-4" />`, React attempts to render a literal DOM element `<icon></icon>`, which is invalid HTML. Tags starting with an uppercase letter (e.g. `<Icon />`, `<StatCard />`) tell React to treat the identifier as a custom React component and invoke it (`React.createElement(Icon, ...)`).
+2. **Prop Naming Convention**: By convention, component prop names use lowercase camelCase (e.g. `icon: LucideIcon` passed as `<StatCard icon={Package} />`) to match standard JavaScript object naming.
+3. **Destructuring Alias Syntax (`icon: Icon`)**: JavaScript object destructuring allows renaming a property during extraction: `{ originalPropName: NewAliasName }`. Destructuring `icon: Icon` unpacks the incoming lowercase `icon` prop and assigns it to a capitalized local identifier `Icon`. This allows it to be rendered directly in JSX as `<Icon className="w-4 h-4" />` without needing a manual reassignment statement (`const Icon = icon;`).
 
 ---
 
@@ -354,8 +363,8 @@ Next.js provides two ways to navigate:
 ---
 
 ### 11. Reusable StatCard Component
-- **Location**: `src/components/dashboard/StatCard.tsx`
-- **What it does**: Reusable metrics card accepting TypeScript props (`title`, `value`, `change`, `icon`).
+- **Location**: `src/components/dashboard/StateCard.tsx`
+- **What it does**: Reusable metrics card accepting TypeScript props (`title`, `value`, `change`, `icon`). Uses `{ icon: Icon }` destructuring aliasing to render dynamic Lucide icon components with capitalized JSX syntax (`<Icon className="w-4 h-4" />`).
 - **Key Snippet**:
   ```tsx
   export interface StatCardProps {
@@ -367,8 +376,13 @@ Next.js provides two ways to navigate:
 
   export default function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
     return (
-      <div className="p-6 rounded-2xl border bg-white dark:bg-neutral-900 shadow-sm">
-        <span className="text-xs font-semibold uppercase">{title}</span>
+      <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-xs font-semibold uppercase">{title}</span>
+          <div className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800">
+            <Icon className="w-4 h-4" />
+          </div>
+        </div>
         <div className="text-3xl font-extrabold">{value}</div>
         <span>{change}</span>
       </div>
