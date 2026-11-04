@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Building2, Package, Users, DollarSign, ArrowUpRight } from "lucide-react";
+import { Building2, Package, Users, DollarSign } from "lucide-react";
+import StatCard from "@/components/dashboard/StateCard";
 
 export default function WholesalerDashboardPage() {
     const stats = [
@@ -25,7 +26,7 @@ export default function WholesalerDashboardPage() {
 
     return (
         <div className="mx-auto w-full max-w-6xl px-6 py-10">
-            {/* Page Header */}
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
                     <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs font-semibold text-neutral-800 dark:text-neutral-200 mb-2">
@@ -50,36 +51,20 @@ export default function WholesalerDashboardPage() {
                 </div>
             </div>
 
-            {/* Metrics Grid */}
+            {/* Clean Metrics Grid using our extracted component */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
-                {stats.map((stat) => {
-                    const Icon = stat.icon;
-                    return (
-                        <div
-                            key={stat.title}
-                            className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm"
-                        >
-                            <div className="flex items-center justify-between mb-4">
-                                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                                    {stat.title}
-                                </span>
-                                <div className="p-2 rounded-lg bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100">
-                                    <Icon className="w-4 h-4" />
-                                </div>
-                            </div>
-                            <div className="text-3xl font-extrabold text-neutral-900 dark:text-neutral-100 mb-1">
-                                {stat.value}
-                            </div>
-                            <div className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                                <ArrowUpRight className="w-3.5 h-3.5" />
-                                <span>{stat.change}</span>
-                            </div>
-                        </div>
-                    );
-                })}
+                {stats.map((stat) => (
+                    <StatCard
+                        key={stat.title}
+                        title={stat.title}
+                        value={stat.value}
+                        change={stat.change}
+                        icon={stat.icon}
+                    />
+                ))}
             </div>
 
-            {/* Recent Activity Card */}
+            {/* Warehouse Status Card */}
             <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm">
                 <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-100 mb-2">
                     Warehouse Status

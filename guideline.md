@@ -38,6 +38,8 @@ deci-trade/
 │   │   ├── layout.tsx      # Root layout: <main> + Footer
 │   │   └── page.tsx        # Homepage route: / (renders SiteHeader + Hero)
 │   ├── components/         # Reusable React components
+│   │   ├── dashboard/      # Portal & analytics components
+│   │   │   └── StatCard.tsx    # Reusable metric card with TypeScript props
 │   │   └── layout/         # Persistent structural components
 │   │       ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
 │   │       ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
@@ -53,7 +55,32 @@ deci-trade/
 
 ## 3. Core Architectural & React Concepts
 
-### A. What is `useState` and How Does It Work?
+### A. Component Props & TypeScript Typing
+
+In React, **Props** (short for properties) represent data passed down from a parent component to a child component.
+
+#### Syntax & Contract:
+```tsx
+interface StatCardProps {
+  title: string;
+  value: string;
+  change: string;
+  icon: LucideIcon;
+}
+
+function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
+  return <div><h3>{title}</h3><p>{value}</p></div>;
+}
+
+// Parent usage:
+<StatCard title="Revenue" value="$48,250" change="+8.4%" icon={DollarSign} />
+```
+- **Type Safety**: Defining an `interface` guarantees that the parent must pass the exact required types, preventing missing data bugs at compile time.
+- **Unidirectional Flow**: Data only flows downwards from parent to child.
+
+---
+
+### B. What is `useState` and How Does It Work?
 
 In standard JavaScript, modifying a variable does not notify the browser to update the display:
 ```js
@@ -73,64 +100,23 @@ const [state, setState] = useState(initialValue);
 - **`setState`**: The updater function used to set a new value and trigger a component re-render.
 - **`initialValue`**: The starting value on the initial render.
 
-#### Real Examples Used in This Project:
-1. **Toggling a Boolean (Show/Hide Password)**:
-   ```tsx
-   const [showPassword, setShowPassword] = useState(false);
-
-   // Toggles false -> true -> false on each click:
-   <button onClick={() => setShowPassword(!showPassword)}>
-     {showPassword ? <EyeOff /> : <Eye />}
-   </button>
-   ```
-2. **Tab Selection (Wholesaler vs. Retailer)**:
-   ```tsx
-   type UserRole = "WHOLESALER" | "RETAILER";
-   const [selectedRole, setSelectedRole] = useState<UserRole>("WHOLESALER");
-
-   <button onClick={() => setSelectedRole("RETAILER")}>Retailer</button>
-   ```
-3. **Form Feedback State**:
-   ```tsx
-   const [isLoading, setIsLoading] = useState(false);
-   const [error, setError] = useState<string | null>(null);
-   ```
-
 ---
 
-### B. Client-Side Form Validation Pattern
+### C. Client-Side Form Validation Pattern
 
-Instead of relying on heavy third-party libraries, forms implement client-side validation using standard JavaScript and Regular Expressions (Regex).
+Forms implement client-side validation using standard JavaScript and Regular Expressions (Regex).
 
 #### 1. Why `noValidate` on the `<form>`?
-Adding `noValidate` to `<form onSubmit={handleSubmit} noValidate>` disables the browser's default HTML tooltip validation popups. This ensures:
-- Consistent cross-browser error styling.
-- Full control over error display via custom React `<AlertCircle>` alerts.
+Adding `noValidate` to `<form onSubmit={handleSubmit} noValidate>` disables default browser tooltip popups, granting full styling control via custom React `<AlertCircle>` alerts.
 
 #### 2. Centralized Regex Helpers (`src/lib/validator.ts`)
 - **`EMAIL_REGEX`**: Enforces valid email structure (`user@domain.tld`).
 - **`PASSWORD_REGEX`**: Requires strong security (minimum 8 characters, at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character).
 - **`PHONE_REGEX`**: Validates telephone formats (allowing an optional `+` prefix, parenthesis, spaces, and dashes with 7–15 digits).
 
-#### 3. Sequential Validation in `handleSubmit`
-The submission handler inspects each field sequentially and stops at the first invalid entry, setting the error message and aborting before triggering `isLoading`:
-```tsx
-const businessName = (formData.get("business_name") as string).trim();
-const email = (formData.get("email") as string).trim();
-
-if (!businessName) {
-  setError("Business name is required.");
-  return;
-}
-if (!EMAIL_REGEX.test(email)) {
-  setError("Please enter a valid email address.");
-  return;
-}
-```
-
 ---
 
-### C. Navigation: Declarative `<Link>` vs. Programmatic `useRouter()`
+### D. Navigation: Declarative `<Link>` vs. Programmatic `useRouter()`
 
 Next.js provides two ways to navigate:
 1. **Declarative Navigation (`<Link href="...">`)**:
@@ -143,20 +129,19 @@ Next.js provides two ways to navigate:
      import { useRouter } from "next/navigation";
 
      const router = useRouter();
-     // Inside handleSubmit after auth succeeds:
      router.push("/wholesaler/dashboard");
      ```
 
 ---
 
-### D. React Server Components (RSC) vs. Client Components
+### E. React Server Components (RSC) vs. Client Components
 - By default in the App Router, components are **Server Components**. They run on the server and send static HTML to the browser with zero client JavaScript bundle overhead.
 - Screens that merely display data without event listeners (like `wholesaler/dashboard/page.tsx`) remain Server Components.
 - Interactive screens requiring browser state (`useState`), programmatic routing (`useRouter`), or event listeners (`onSubmit`, `onClick`) specify `"use client";` at line 1.
 
 ---
 
-### E. Route Groups `(auth)` & Nested Layouts
+### F. Route Groups `(auth)` & Nested Layouts
 - Folders enclosed in parentheses, like `(auth)`, are **omitted from the URL**:
   - `src/app/(auth)/login/page.tsx` &rarr; accessible at `/login`.
   - `src/app/(auth)/registration/page.tsx` &rarr; accessible at `/registration`.
@@ -166,7 +151,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### F. Single `<main>` Landmark & Sticky Footer
+### G. Single `<main>` Landmark & Sticky Footer
 - HTML accessibility standards allow only **one visible `<main>` landmark** per document.
 - In `src/app/layout.tsx`, `<main className="flex flex-1 flex-col">` wraps `{children}`.
   - `flex-1` expands `<main>` to keep the footer pinned to the bottom of the viewport.
@@ -174,7 +159,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### G. React 19 Form Submission (`SubmitEvent`)
+### H. React 19 Form Submission (`SubmitEvent`)
 - React 19 deprecated `FormEvent` in favor of standard DOM event types.
 - Form submissions use `React.SubmitEvent<HTMLFormElement>`. Specifying `<HTMLFormElement>` ensures `e.currentTarget` is fully typed for extracting values with `new FormData(e.currentTarget)`.
 
@@ -251,7 +236,7 @@ Next.js provides two ways to navigate:
 - **Key Snippet**:
   ```tsx
   <footer className="border-t border-zinc-200 dark:border-zinc-800 py-8">
-    <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
+    <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
       <p>© {new Date().getFullYear()} DeciTrade. All rights reserved.</p>
     </div>
   </footer>
@@ -368,17 +353,47 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 11. Wholesaler Dashboard Page
-- **Location**: `src/app/wholesaler/dashboard/page.tsx`
-- **What it does**: A React Server Component portal for wholesalers displaying business performance metrics (Total Orders, Active Retailers, Gross Revenue) and warehouse dispatch status.
+### 11. Reusable StatCard Component
+- **Location**: `src/components/dashboard/StatCard.tsx`
+- **What it does**: Reusable metrics card accepting TypeScript props (`title`, `value`, `change`, `icon`).
 - **Key Snippet**:
   ```tsx
-  export default function WholesalerDashboardPage() {
+  export interface StatCardProps {
+    title: string;
+    value: string;
+    change: string;
+    icon: LucideIcon;
+  }
+
+  export default function StatCard({ title, value, change, icon: Icon }: StatCardProps) {
     return (
-      <div className="mx-auto w-full max-w-6xl px-6 py-10">
-        <h1 className="text-3xl font-extrabold tracking-tight">Business Dashboard</h1>
-        {/* Metric cards grid */}
+      <div className="p-6 rounded-2xl border bg-white dark:bg-neutral-900 shadow-sm">
+        <span className="text-xs font-semibold uppercase">{title}</span>
+        <div className="text-3xl font-extrabold">{value}</div>
+        <span>{change}</span>
       </div>
     );
   }
+  ```
+
+---
+
+### 12. Wholesaler Dashboard Page
+- **Location**: `src/app/wholesaler/dashboard/page.tsx`
+- **What it does**: A React Server Component portal for wholesalers that renders the metrics grid using the reusable `<StatCard />` component.
+- **Key Snippet**:
+  ```tsx
+  import StatCard from "@/components/dashboard/StatCard";
+
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+    {stats.map((stat) => (
+      <StatCard
+        key={stat.title}
+        title={stat.title}
+        value={stat.value}
+        change={stat.change}
+        icon={stat.icon}
+      />
+    ))}
+  </div>
   ```
