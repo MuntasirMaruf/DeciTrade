@@ -45,7 +45,8 @@ deci-trade/
 │   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
 │   │   │   └── Footer.tsx      # Global footer with dynamic year & links
 │   │   └── ui/             # Reusable design system primitives
-│   │       └── Button.tsx      # Reusable button with variants and loading state
+│   │       ├── Button.tsx      # Reusable button with variants and loading state
+│   │       └── ThemeToggle.tsx # Client-side theme toggle with localStorage persistence
 │   └── lib/                # Shared utilities & validators
 │       └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
 ├── guideline.md            # Living architecture & implementation documentation
@@ -177,9 +178,66 @@ Next.js provides two ways to navigate:
 ---
 
 ### I. Design Tokens & Theme Architecture (Tailwind CSS v4)
-- **Token Hierarchy**: Uses CSS Custom Properties (`--background`, `--foreground`, `--primary`, `--border`, `--muted`, `--destructive`) defined on `:root` and overridden in `@media (prefers-color-scheme: dark)`.
-- **CSS-First Theme Registration**: Registered via `@theme inline` in `src/app/globals.css`, generating utility classes like `bg-primary`, `text-primary-foreground`, and `border-border`.
-- **Zero-FOUC Dark Mode**: Theme switches happen directly at the CSS engine level without requiring JavaScript runtime execution or React context re-renders.
+
+Design tokens and class-based theme switching are configured directly in `src/app/globals.css` using CSS custom properties and Tailwind CSS v4 directives.
+
+#### 1. Enabling Class-Based Dark Mode (`@custom-variant`)
+By default, Tailwind v4 only responds to operating system preferences. To allow manual theme toggling via `<html class="dark">`, register the custom variant at the top of the file:
+```css
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+```
+- **How it works**: Instructs Tailwind's compiler to activate any `dark:...` utility class whenever an ancestor element carries the `.dark` class.
+
+#### 2. Defining Light vs. Dark Design Tokens
+Tokens are declared as CSS variables under `:root` for light mode and overridden under `:root.dark, .dark` for dark mode:
+```css
+/* Light Mode Default */
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --border: #e4e4e7;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --destructive: #ef4444;
+}
+
+/* Manual .dark Class (Toggled via ThemeToggle & persisted in localStorage) */
+:root.dark,
+.dark {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #121215;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --border: #27272a;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --destructive: #f87171;
+}
+```
+- **Dual-Trigger Logic**: If the user toggles manually (`<html class="dark">` or `<html class="light">`), the class takes precedence. If no class is set, it falls back to the visitor's OS dark/light setting.
+
+#### 3. Mapping Tokens to Tailwind Utilities (`@theme inline`)
+Register CSS variables into Tailwind's utility generation engine:
+```css
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --font-sans: var(--font-sans);
+}
+```
+- **Result**: Generates utility classes (`bg-background`, `text-foreground`, `bg-primary`, `border-border`) that automatically swap colors when the `.dark` class toggles without requiring React re-renders.
 
 ---
 
@@ -244,22 +302,23 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 2. Public Site Header
 - **Location**: `src/components/layout/SiteHeader.tsx`
-- **What it does**: Public navbar containing the `DT` brand logo linking to `/`, a "Sign In" link to `/login`, and a "Register" button to `/registration`.
+- **What it does**: Public navbar containing the `DT` brand logo linking to `/`, theme toggle (`<ThemeToggle />`), a "Sign In" link to `/login`, and a "Register" button to `/registration`. Uses semantic design tokens (`border-border`, `bg-background/80`, `text-foreground`).
 - **Key Snippet**:
   ```tsx
-  <header className="sticky top-0 z-50 border-b border-zinc-800 bg-black">
+  <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
     <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
       <Link href="/" className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-black">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground text-xs font-black text-background">
           DT
         </div>
-        <span className="text-lg font-bold text-white">DeciTrade</span>
+        <span className="text-lg font-bold text-foreground">DeciTrade</span>
       </Link>
-      <div className="flex items-center gap-5">
-        <Link href="/login" className="text-sm font-medium text-zinc-300 hover:text-white">
+      <div className="flex items-center gap-4">
+        <ThemeToggle />
+        <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">
           Sign In
         </Link>
-        <Link href="/registration" className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200">
+        <Link href="/registration" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
           Register
         </Link>
       </div>
@@ -271,21 +330,24 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 3. Auth Header
 - **Location**: `src/components/layout/AuthHeader.tsx`
-- **What it does**: Dedicated auth navbar displaying the `DT` brand badge and a "Back to website" return link.
+- **What it does**: Dedicated auth navbar displaying the `DT` brand badge, theme toggle (`<ThemeToggle />`), and a "Back to Home" return link using semantic tokens.
 - **Key Snippet**:
   ```tsx
-  <header className="sticky top-0 z-50 border-b border-zinc-800 bg-black">
+  <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
     <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
       <Link href="/" className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-black">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground text-xs font-black text-background">
           DT
         </div>
-        <span className="text-lg font-bold text-white">DeciTrade</span>
+        <span className="text-lg font-bold text-foreground">DeciTrade</span>
       </Link>
-      <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-400 hover:text-white">
-        <ArrowLeft className="w-4 h-4" />
-        <span>Back to website</span>
-      </Link>
+      <div className="flex items-center gap-4">
+        <ThemeToggle />
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back to Home</span>
+        </Link>
+      </div>
     </div>
   </header>
   ```
@@ -524,3 +586,52 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     </Button>
     ```
   - **General Action**: `<Button variant="secondary" onClick={handleRefresh}>Refresh</Button>`
+
+---
+
+### 14. Theme Toggle Component
+- **Location**: `src/components/ui/ThemeToggle.tsx`
+- **What it does**: Client Component that toggles dark/light theme on `document.documentElement` (`<html class="dark">`), persists choice in `localStorage`, and prevents hydration layout flash using a client `mounted` check.
+- **Key Snippet**:
+  ```tsx
+  "use client";
+
+  import { useEffect, useState } from "react";
+  import { Sun, Moon } from "lucide-react";
+  import Button from "@/components/ui/Button";
+
+  export default function ThemeToggle() {
+    const [isDark, setIsDark] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+      setMounted(true);
+      const saved = localStorage.getItem("theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const active = saved === "dark" || (!saved && prefersDark);
+      setIsDark(active);
+      document.documentElement.classList.toggle("dark", active);
+    }, []);
+
+    function toggleTheme() {
+      const next = !isDark;
+      setIsDark(next);
+      document.documentElement.classList.toggle("dark", next);
+      localStorage.setItem("theme", next ? "dark" : "light");
+    }
+
+    if (!mounted) {
+      return (
+        <Button type="button" size="icon" variant="outline" aria-label="Toggle theme" className="opacity-0">
+          <Moon className="w-4 h-4" />
+        </Button>
+      );
+    }
+
+    return (
+      <Button type="button" size="icon" variant="outline" onClick={toggleTheme} aria-label="Toggle theme">
+        {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-zinc-400" />}
+      </Button>
+    );
+  }
+  ```

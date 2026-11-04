@@ -27,7 +27,7 @@ export default function Button({
         sm: "py-1.5 px-3 text-xs",
         md: "py-2.5 px-4 text-sm",
         lg: "py-3 px-5 text-base",
-        icon: "h-9 w-9 p-0",
+        icon: "h-9 w-9 p-0 aspect-square",
     };
 
     // 3. Variant colors
@@ -37,7 +37,7 @@ export default function Button({
         outline: "border border-border text-foreground hover:bg-muted",
     };
 
-    const widthStyle = fullWidth ? "w-full" : "w-auto";
+    const widthStyle = fullWidth ? "w-full" : "";
 
     return (
         <button

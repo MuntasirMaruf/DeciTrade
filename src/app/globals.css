@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* -------------------------------------------------------------------------- */
 /* Design Tokens: 1. Light Mode (Default)                                     */
@@ -33,33 +34,31 @@
 }
 
 /* -------------------------------------------------------------------------- */
-/* Design Tokens: 2. Dark Mode Override                                       */
+/* Design Tokens: 2. Dark Mode (.dark class)                                  */
 /* -------------------------------------------------------------------------- */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Surface & Base */
-    --background: #09090b; /* zinc-950 */
-    --foreground: #fafafa; /* zinc-50 */
-    --card: #121215;
-    --card-foreground: #fafafa;
+.dark {
+  /* Surface & Base */
+  --background: #09090b; /* zinc-950 */
+  --foreground: #fafafa; /* zinc-50 */
+  --card: #121215;
+  --card-foreground: #fafafa;
 
-    /* Primary Interactive (Inverts to white CTA in dark mode) */
-    --primary: #fafafa;
-    --primary-foreground: #18181b;
+  /* Primary Interactive (Inverts to white CTA in dark mode) */
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
 
-    /* Muted & Secondary Elements */
-    --muted: #27272a; /* zinc-800 */
-    --muted-foreground: #a1a1aa; /* zinc-400 */
+  /* Muted & Secondary Elements */
+  --muted: #27272a; /* zinc-800 */
+  --muted-foreground: #a1a1aa; /* zinc-400 */
 
-    /* Borders & Inputs */
-    --border: #27272a; /* zinc-800 */
-    --input: #27272a;
+  /* Borders & Inputs */
+  --border: #27272a; /* zinc-800 */
+  --input: #27272a;
 
-    /* Brand Accent & Feedback */
-    --accent: #10b981;
-    --accent-foreground: #ffffff;
-    --destructive: #f87171; /* red-400 */
-  }
+  /* Brand Accent & Feedback */
+  --accent: #10b981;
+  --accent-foreground: #ffffff;
+  --destructive: #f87171; /* red-400 */
 }
 
 /* -------------------------------------------------------------------------- */
@@ -105,12 +104,10 @@ input:-webkit-autofill:focus {
   transition: background-color 9999s ease-in-out 0s;
 }
 
-@media (prefers-color-scheme: dark) {
-  input:-webkit-autofill,
-  input:-webkit-autofill:hover,
-  input:-webkit-autofill:focus {
-    -webkit-text-fill-color: #fafafa;
-    -webkit-box-shadow: 0 0 0 1000px #121215 inset;
-    caret-color: #fafafa;
-  }
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover,
+.dark input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fafafa;
+  -webkit-box-shadow: 0 0 0 1000px #121215 inset;
+  caret-color: #fafafa;
 }
