@@ -16,18 +16,7 @@ export default function Header() {
 
                 {/* Right Actions: Sign In & Register */}
                 <div className="flex items-center gap-5">
-                    <Link
-                        href="/login"
-                        className="text-sm font-medium text-zinc-300 hover:text-white transition-colors"
-                    >
-                        Sign In
-                    </Link>
-                    <Link
-                        href="/registration"
-                        className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-zinc-200 transition-colors"
-                    >
-                        Register
-                    </Link>
+                    <p>Hi John!</p>
                 </div>
             </div>
         </header>

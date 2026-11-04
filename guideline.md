@@ -23,9 +23,9 @@ deci-trade/
 ├── src/
 │   ├── app/                # App Router: file-system based routing
 │   │   ├── (auth)/         # Route Group: omitted from URL
-│   │   │   ├── layout.tsx  # Nested layout: centered card container for auth screens
+│   │   │   ├── layout.tsx  # Nested layout: renders AuthHeader + centered card
 │   │   │   ├── login/
-│   │   │   │   └── page.tsx        # Route: /login (Sign In form with regex validation & redirect)
+│   │   │   │   └── page.tsx        # Route: /login (Sign In form with regex validation)
 │   │   │   ├── registration/
 │   │   │   │   └── page.tsx        # Route: /registration (Business type selection & signup)
 │   │   │   └── onboarding/
@@ -35,12 +35,13 @@ deci-trade/
 │   │   │       └── page.tsx        # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
 │   │   ├── favicon.ico
 │   │   ├── globals.css     # Global styles & Tailwind configuration
-│   │   ├── layout.tsx      # Root layout: Header + <main> + Footer
-│   │   └── page.tsx        # Homepage route: /
+│   │   ├── layout.tsx      # Root layout: <main> + Footer
+│   │   └── page.tsx        # Homepage route: / (renders SiteHeader + Hero)
 │   ├── components/         # Reusable React components
 │   │   └── layout/         # Persistent structural components
-│   │       ├── Header.tsx  # Dark navbar with logo badge & auth navigation
-│   │       └── Footer.tsx  # Global footer with dynamic year & links
+│   │       ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
+│   │       ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
+│   │       └── Footer.tsx      # Global footer with dynamic year & links
 │   └── lib/                # Shared utilities & validators
 │       └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
 ├── guideline.md            # Living architecture & implementation documentation
@@ -161,13 +162,13 @@ Next.js provides two ways to navigate:
   - `src/app/(auth)/registration/page.tsx` &rarr; accessible at `/registration`.
   - `src/app/(auth)/onboarding/page.tsx` &rarr; accessible at `/onboarding`.
 - Layouts nest hierarchically:
-  $$\text{RootLayout (Header + <main> + Footer)} \longrightarrow \text{AuthLayout (Centered Card)} \longrightarrow \text{Page}$$
+  $$\text{RootLayout (<main> + Footer)} \longrightarrow \text{AuthLayout (AuthHeader + Centered Card)} \longrightarrow \text{Page}$$
 
 ---
 
 ### F. Single `<main>` Landmark & Sticky Footer
 - HTML accessibility standards allow only **one visible `<main>` landmark** per document.
-- In `src/app/layout.tsx`, `<main className="flex flex-1 flex-col">` wraps `{children}` between `<Header />` and `<Footer />`.
+- In `src/app/layout.tsx`, `<main className="flex flex-1 flex-col">` wraps `{children}`.
   - `flex-1` expands `<main>` to keep the footer pinned to the bottom of the viewport.
   - `flex flex-col` provides a flex container so child layouts (`(auth)/layout.tsx`) can center cards vertically using `items-center`.
 
@@ -183,11 +184,10 @@ Next.js provides two ways to navigate:
 
 ### 1. Root Layout
 - **Location**: `src/app/layout.tsx`
-- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), and surrounds all pages with the persistent Header and Footer.
+- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), and establishes the sticky-footer shell with `<main>` and `<Footer />`.
 - **Key Snippet**:
   ```tsx
   <body className="min-h-full flex flex-col bg-zinc-50 dark:bg-black">
-    <Header />
     <main className="flex flex-1 flex-col">{children}</main>
     <Footer />
   </body>
@@ -195,9 +195,9 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 2. Header
-- **Location**: `src/components/layout/Header.tsx`
-- **What it does**: Persistent dark top bar containing the `DT` brand logo linking to `/`, a "Sign In" link to `/login`, and a "Register" button to `/registration`.
+### 2. Public Site Header
+- **Location**: `src/components/layout/SiteHeader.tsx`
+- **What it does**: Public navbar containing the `DT` brand logo linking to `/`, a "Sign In" link to `/login`, and a "Register" button to `/registration`.
 - **Key Snippet**:
   ```tsx
   <header className="sticky top-0 z-50 border-b border-zinc-800 bg-black">
@@ -222,7 +222,30 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 3. Footer
+### 3. Auth Header
+- **Location**: `src/components/layout/AuthHeader.tsx`
+- **What it does**: Dedicated auth navbar displaying the `DT` brand badge and a "Back to website" return link.
+- **Key Snippet**:
+  ```tsx
+  <header className="sticky top-0 z-50 border-b border-zinc-800 bg-black">
+    <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+      <Link href="/" className="flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-black">
+          DT
+        </div>
+        <span className="text-lg font-bold text-white">DeciTrade</span>
+      </Link>
+      <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-400 hover:text-white">
+        <ArrowLeft className="w-4 h-4" />
+        <span>Back to website</span>
+      </Link>
+    </div>
+  </header>
+  ```
+
+---
+
+### 4. Footer
 - **Location**: `src/components/layout/Footer.tsx`
 - **What it does**: Global footer pinned to the bottom of the viewport displaying the dynamic copyright year and policy links.
 - **Key Snippet**:
@@ -236,35 +259,49 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 4. Homepage
+### 5. Homepage
 - **Location**: `src/app/page.tsx`
-- **What it does**: The landing page hero section with platform headlines and call-to-action buttons.
+- **What it does**: The public landing page displaying `SiteHeader` and the hero section with platform headlines and call-to-action buttons.
 - **Key Snippet**:
   ```tsx
-  <section className="mx-auto flex max-w-5xl flex-col items-center justify-center px-6 py-24 text-center">
-    <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">
-      Algorithmic Decisions for Smarter Trading
-    </h1>
-  </section>
+  export default function Home() {
+    return (
+      <>
+        <SiteHeader />
+        <section className="mx-auto flex max-w-5xl flex-col items-center justify-center px-6 py-24 text-center">
+          <h1 className="text-4xl font-extrabold tracking-tight sm:text-6xl">
+            Algorithmic Decisions for Smarter Trading
+          </h1>
+        </section>
+      </>
+    );
+  }
   ```
 
 ---
 
-### 5. Authentication Nested Layout
+### 6. Authentication Nested Layout
 - **Location**: `src/app/(auth)/layout.tsx`
-- **What it does**: A layout wrapper dedicated to authentication screens. It stretches to fill the vertical space of `<main>` and centers form cards horizontally and vertically.
+- **What it does**: A layout wrapper dedicated to authentication screens. It renders the `AuthHeader` at the top and centers form cards horizontally and vertically.
 - **Key Snippet**:
   ```tsx
-  <div className="flex flex-1 items-center justify-center px-4 py-12">
-    <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-      {children}
-    </div>
-  </div>
+  export default function AuthLayout({ children }: { children: React.ReactNode }) {
+    return (
+      <div className="flex flex-1 flex-col">
+        <AuthHeader />
+        <div className="flex flex-1 items-center justify-center px-4 py-12">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  }
   ```
 
 ---
 
-### 6. Validation Utilities
+### 7. Validation Utilities
 - **Location**: `src/lib/validator.ts`
 - **What it does**: Exports reusable regular expressions for client-side form validation.
 - **Key Snippet**:
@@ -276,7 +313,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 7. Login Page
+### 8. Login Page
 - **Location**: `src/app/(auth)/login/page.tsx`
 - **What it does**:
   - Sign-in form with client-side email and password validation.
@@ -297,7 +334,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 8. Registration Page
+### 9. Registration Page
 - **Location**: `src/app/(auth)/registration/page.tsx`
 - **What it does**:
   - Account creation with business type selection tabs (Wholesaler vs. Retailer).
@@ -313,7 +350,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 9. Onboarding Page (2-Step Funnel)
+### 10. Onboarding Page (2-Step Funnel)
 - **Location**: `src/app/(auth)/onboarding/page.tsx`
 - **What it does**:
   - Step 2 in funnel: "Business Setup" with 2-step progress stepper (`1. Account Created` &rarr; `2. Business Setup`).
@@ -331,7 +368,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### 10. Wholesaler Dashboard Page
+### 11. Wholesaler Dashboard Page
 - **Location**: `src/app/wholesaler/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for wholesalers displaying business performance metrics (Total Orders, Active Retailers, Gross Revenue) and warehouse dispatch status.
 - **Key Snippet**:
