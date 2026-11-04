@@ -183,7 +183,7 @@ Next.js provides two ways to navigate:
 
 ---
 
-### J. HTML Element Inheritance, Props Spreading & Button Types
+### J. HTML Element Inheritance, Props Spreading & Button Architecture
 When building reusable UI primitives (e.g. `src/components/ui/Button.tsx`):
 
 #### 1. Interface Inheritance (`extends React.ButtonHTMLAttributes<HTMLButtonElement>`)
@@ -191,18 +191,39 @@ Instead of manually defining props for `type`, `disabled`, `onClick`, `aria-labe
 ```tsx
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: "primary" | "secondary" | "outline";
+  size?: "sm" | "md" | "lg" | "icon";
+  fullWidth?: boolean;
   isLoading?: boolean;
 }
 ```
 
 #### 2. Rest Parameters (`...props`) & Spread Operator (`{...props}`)
-- **Rest Parameter**: `function Button({ children, variant, isLoading, ...props }: ButtonProps)` unpacks custom props into local variables and bundles all remaining attributes into a `props` object.
+- **Rest Parameter**: `function Button({ children, variant, size, fullWidth, isLoading, ...props }: ButtonProps)` unpacks custom props into local variables and bundles all remaining attributes into a `props` object.
 - **JSX Spread**: `<button {...props}>` forwards every attribute (`type="submit"`, `id`, `onClick`, `form`) directly onto the DOM `<button>` element.
 
 #### 3. HTML Button Type Semantics
 - **Inside `<form>` (Default Behavior)**: According to the HTML specification, any `<button>` inside a `<form>` without an explicit `type` defaults to `type="submit"`. Clicking it triggers form submission.
 - **Form Cancellation / Steppers**: To create non-submitting action buttons inside a form (e.g., Cancel, Back, Toggle Password), you must explicitly specify `type="button"`.
 - **Outside `<form>`**: `<Button onClick={handleClick}>` functions as a standard click action without form submission behavior.
+
+#### 4. Width Modes (`inline-flex` vs. `fullWidth`) & Sizing
+- By default, buttons use `inline-flex w-auto` to hug their content rather than forcing 100% width.
+- Forms requiring edge-to-edge submission buttons specify `fullWidth={true}` (`w-full`).
+- Sizing variants (`sm`, `md`, `lg`, `icon`) govern padding and dimensions.
+
+#### 5. Unified Text & Icon Button Architecture
+- A single `Button` component handles text buttons, text+icon combos, and square icon-only buttons (`size="icon"` with `h-9 w-9 p-0`). Consolidating these prevents duplicating theme tokens, focus rings, hover states, and disabled handling.
+- **Accessibility Requirement**: Because SVGs have no inner text, icon-only buttons must provide an `aria-label` (e.g. `aria-label="Toggle theme"`) so assistive technologies announce the control's action.
+
+#### 6. Dynamic Theme Icon Toggling
+- **Pure CSS Class Toggling**: Renders both icons and utilizes Tailwind classes to switch visibility instantly without React re-renders or hydration flash:
+  ```tsx
+  <Button size="icon" variant="outline" aria-label="Toggle theme">
+    <Moon className="w-4 h-4 dark:hidden" />
+    <Sun className="w-4 h-4 hidden dark:block" />
+  </Button>
+  ```
+- **State-Driven Toggling**: Conditionally renders the active icon via React state: `{isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}`.
 
 ---
 
@@ -448,23 +469,33 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 13. Reusable Button Component
 - **Location**: `src/components/ui/Button.tsx`
-- **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), an integrated loading spinner state (`isLoading`), and prop spreading (`...props`).
+- **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
 - **Key Snippet**:
   ```tsx
   export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: "primary" | "secondary" | "outline";
+    size?: "sm" | "md" | "lg" | "icon";
+    fullWidth?: boolean;
     isLoading?: boolean;
   }
 
   export default function Button({
     children,
     variant = "primary",
+    size = "md",
+    fullWidth = false,
     isLoading = false,
     disabled,
     className = "",
     ...props
   }: ButtonProps) {
-    const baseStyles = "w-full py-2.5 px-4 text-sm font-semibold rounded-[var(--radius)] ...";
+    const baseStyles = "inline-flex items-center justify-center font-semibold rounded-[var(--radius)] ...";
+    const sizeStyles = {
+      sm: "py-1.5 px-3 text-xs",
+      md: "py-2.5 px-4 text-sm",
+      lg: "py-3 px-5 text-base",
+      icon: "h-9 w-9 p-0",
+    };
     const variantStyles = {
       primary: "bg-primary text-primary-foreground hover:opacity-90",
       secondary: "bg-muted text-foreground hover:opacity-80",
@@ -472,13 +503,24 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     };
 
     return (
-      <button disabled={disabled || isLoading} className={`${baseStyles} ${variantStyles[variant]} ${className}`} {...props}>
+      <button
+        disabled={disabled || isLoading}
+        className={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${fullWidth ? "w-full" : "w-auto"} ${className}`}
+        {...props}
+      >
         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : children}
       </button>
     );
   }
   ```
 - **Usage Patterns**:
-  - **Form Submit**: `<Button type="submit" isLoading={isLoading}>Sign In</Button>`
+  - **Full-Width Form Submit**: `<Button type="submit" fullWidth isLoading={isLoading}>Sign In</Button>`
   - **Form Action (Non-submitting)**: `<Button type="button" variant="outline" onClick={handleCancel}>Cancel</Button>`
-  - **General Click**: `<Button variant="secondary" onClick={handleRefresh}>Refresh</Button>`
+  - **Square Icon Button (Theme Toggle)**:
+    ```tsx
+    <Button size="icon" variant="outline" aria-label="Toggle theme">
+      <Moon className="w-4 h-4 dark:hidden" />
+      <Sun className="w-4 h-4 hidden dark:block" />
+    </Button>
+    ```
+  - **General Action**: `<Button variant="secondary" onClick={handleRefresh}>Refresh</Button>`

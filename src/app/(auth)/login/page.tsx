@@ -126,7 +126,7 @@ export default function LoginPage() {
                     </div>
                 </div>
 
-                <Button type="submit" isLoading={isLoading} className="mt-2">
+                <Button type="submit" fullWidth isLoading={isLoading} className="mt-2">
                     Sign In
                 </Button>
             </form>
