@@ -30,7 +30,8 @@ deci-trade/
 │   │   │   ├── registration/
 │   │   │   │   └── page.tsx        # Route: /registration (Business type selection & signup)
 │   │   │   └── onboarding/
-│   │   │       └── page.tsx        # Route: /onboarding (Step 2 business setup funnel)
+│   │   │       ├── page.tsx        # Route: /onboarding (Server Component: Auth & DB guard with zero-flash redirect)
+│   │   │       └── OnboardingForm.tsx # Colocated Client Component (Step 2 business setup form)
 │   │   ├── retailer/       # Retailer portal routes
 │   │   │   ├── layout.tsx      # Nested layout: renders Header + portal shell
 │   │   │   ├── page.tsx        # Route: /retailer (Server redirect to /retailer/dashboard)
@@ -65,10 +66,12 @@ deci-trade/
 │   │       └── ThemeToggle.tsx # Client-side theme toggle with localStorage persistence
 │   ├── lib/                # Shared utilities & validators
 │   │   └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
-│   └── utils/              # Third-party SDK & client initializations
-│       └── supabase/
-│           ├── client.ts   # Browser Client for Client Components (@supabase/ssr)
-│           └── server.ts   # Server Client for Server Components & Actions (@supabase/ssr)
+│   ├── utils/              # Third-party SDK & client initializations
+│   │   └── supabase/
+│   │       ├── client.ts   # Browser Client for Client Components (@supabase/ssr)
+│   │       ├── middleware.ts # Session refresh & cookie synchronization helper (@supabase/ssr)
+│   │       └── server.ts   # Server Client for Server Components & Actions (@supabase/ssr)
+│   └── proxy.ts            # Next.js 16 Proxy route guard & session updater (replaces deprecated middleware.ts)
 ├── b2b_wholesale_architecture_plan.md # Architectural blueprint & hybrid pattern specification
 ├── supabase_schema.sql     # Complete PostgreSQL DDL (10 ENUMs, 14 tables, triggers, RLS)
 ├── guideline.md            # Living architecture & implementation documentation
@@ -854,8 +857,9 @@ The user access and onboarding workflow spans 5 coordinated phases across the br
    └─ App queries public.profiles.role -> dynamically forwards to /wholesaler/dashboard or /retailer/dashboard
    │
    ▼
-5. Route Protection (middleware.ts)
+5. Route Protection & Session Refresh (src/proxy.ts — Next.js 16 Proxy)
    └─ Intercepts requests to /wholesaler/* and /retailer/*
+   └─ Automatically refreshes expired Supabase JWT session tokens
    └─ Blocks unauthenticated users -> redirects to /login
    └─ Enforces role segregation: prevents Retailers from accessing Wholesaler routes
 ```
@@ -1005,53 +1009,59 @@ The resulting cookie payload stored under `sb-<project-ref>-auth-token` contains
 - **Cookie Boundary (4KB Limit & Stale State Prevention)**: The cookie strictly stores the authentication session. It **never** stores domain tables (`warehouse_address`, product listings, orders, invoices). Storing relational entities in cookies causes header bloat, exceeds browser cookie limits (4KB per domain), and results in stale data when records update on the server.
 - **PostgreSQL Tables (Relational Truth)**: Domain entities reside strictly in PostgreSQL (`public.profiles`, `public.wholesalers`, `public.retailers`).
 
-###### 4. How the Onboarding Page Accesses and Consumes the Cookie (`src/app/(auth)/onboarding/page.tsx`)
-When the user arrives at `/onboarding`, the page reads the session cookie to determine user identity, auto-selects their role form, and submits business data to the database using `user.id`:
+###### 4. Server-Side Guard & Colocated Form Architecture (`src/app/(auth)/onboarding/`)
+Rather than relying on client-side `useEffect` hooks that introduce a visible loading flicker and client-side auth fetch waterfalls, the onboarding flow utilizes the App Router Server Component Guard pattern:
+
+1. **Server Guard (`src/app/(auth)/onboarding/page.tsx`)**:
+   - Executes entirely on the server using `createClient()` from `src/utils/supabase/server.ts`.
+   - Validates identity with `supabase.auth.getUser()`, redirecting unauthenticated visitors to `/login`.
+   - Directly queries `public.wholesalers` or `public.retailers` in PostgreSQL on the server.
+   - If business details already exist (`warehouse_address` or `delivery_address`), issues an immediate HTTP 307 `redirect()` before HTML or JavaScript streams to the browser, eliminating client redirects or loading flashes.
+   - Passes validated `userId` and `initialRole` directly as props into the colocated form.
 
 ```tsx
-// Location: src/app/(auth)/onboarding/page.tsx
+// Location: src/app/(auth)/onboarding/page.tsx (Server Component)
+import { redirect } from "next/navigation";
+import { createClient } from "@/utils/supabase/server";
+import OnboardingForm from "./OnboardingForm";
 
-// A. Reading the session cookie on mount to auto-detect identity & role
-useEffect(() => {
-    const supabase = createClient();
-    async function checkUser() {
-        // Reads JWT directly from document.cookie and verifies with Supabase
-        const { data: { user }, error: authError } = await supabase.auth.getUser();
-        if (authError || !user) {
-            router.push("/login");
-            return;
-        }
+export default async function OnboardingPage() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-        setUserId(user.id);
-        // Extracts role from the cookie's user_metadata (no DB round-trip needed)
-        const registeredRole = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
-        setRole(registeredRole);
-        setIsCheckingAuth(false);
+    if (!user) redirect("/login");
+
+    const role = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+    const tableName = role === "WHOLESALER" ? "wholesalers" : "retailers";
+    const addressField = role === "WHOLESALER" ? "warehouse_address" : "delivery_address";
+
+    const { data: profile } = await supabase
+        .from(tableName)
+        .select(addressField)
+        .eq("id", user.id)
+        .single();
+
+    const address = profile ? (profile as Record<string, string | null>)[addressField] : null;
+    if (address && address.trim() !== "") {
+        redirect(role === "WHOLESALER" ? "/wholesaler/dashboard" : "/retailer/dashboard");
     }
 
-    checkUser();
-}, [router]);
+    return <OnboardingForm userId={user.id} initialRole={role} />;
+}
+```
 
-// B. Submitting business setup using the verified user ID
-async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!userId) return;
+2. **Colocated Client Form (`src/app/(auth)/onboarding/OnboardingForm.tsx`)**:
+   - Manages interactive form state (`error`, `isLoading`) and submits business setup updates via the browser client (`src/utils/supabase/client.ts`).
+   - Renders with the verified role from the very first frame without auth checks or spinners:
 
-    const formData = new FormData(e.currentTarget);
-    const supabase = createClient();
+```tsx
+// Location: src/app/(auth)/onboarding/OnboardingForm.tsx (Client Component)
+"use client";
 
-    if (isWholesaler) {
-        // Updates public.wholesalers WHERE id = userId
-        // PostgreSQL RLS enforces: USING (auth.uid() = id)
-        const { error } = await supabase
-            .from("wholesalers")
-            .update({
-                warehouse_address: (formData.get("warehouse_address") as string).trim(),
-                description: (formData.get("description") as string).trim() || null,
-                trade_license_number: (formData.get("trade_license_number") as string).trim() || null,
-            })
-            .eq("id", userId);
-    }
+export default function OnboardingForm({ userId, initialRole }: OnboardingFormProps) {
+    const [role, setRole] = useState<"WHOLESALER" | "RETAILER">(initialRole);
+    const isWholesaler = role === "WHOLESALER";
+    // ... handles form submit and routes dynamically to targetDashboard
 }
 ```
 
@@ -1061,7 +1071,103 @@ Developers can inspect the active session token:
 2. Navigate to **Application** &rarr; **Storage** &rarr; **Cookies** &rarr; `http://localhost:3000`.
 3. Inspect the cookie prefixed with `sb-<project-ref>-auth-token`.
 
-#### 3. The PostgreSQL Automated User Trigger (`handle_new_user`)
+#### 3. Supabase Session Refresh & Route Protection Architecture (src/proxy.ts)
+
+In Next.js 16 (`next@16.4.4`), the legacy `middleware.ts` file convention is **deprecated** and officially renamed to **`proxy.ts`** (`export function proxy(request: NextRequest)`), running in the Node.js runtime by default. This clarifies its role as a fast network boundary proxy in front of the application.
+
+In applications using `@supabase/ssr`, Proxy performs two non-negotiable operational roles: **continuous session token renewal** and **global route isolation**.
+
+##### 1. The React Server Component Read-Only Cookie Constraint
+Next.js App Router enforces a strict unidirectional rendering lifecycle:
+- React Server Components (`async function Page()`) can read cookies via `cookies()` from `next/headers`, but **cannot write, mutate, or set cookies** during component rendering.
+- Supabase JSON Web Tokens (`access_token`) possess a standard 1-hour (3600 seconds) lifespan.
+- When an authenticated user browses the platform after their initial access token expires, the server client can use the `refresh_token` to obtain a fresh `access_token`. However, because Server Components cannot write `Set-Cookie` response headers, the renewed token is discarded, causing the user to be abruptly logged out on subsequent requests.
+
+##### 2. The Next.js 16 Proxy Solution (`updateSession`)
+Next.js 16 Proxy executes on the network boundary *before* any request reaches a layout, page, Server Component, or Route Handler. Unlike Server Components, Proxy possesses read and write access to both request headers and response cookies.
+
+```text
+[ Browser Request ] (Incoming Cookie: sb-<project-ref>-auth-token)
+        │
+        ▼
+[ Next.js 16 Proxy (src/proxy.ts) ]
+  1. Intercepts request before route compilation
+  2. Invokes updateSession(request) in src/utils/supabase/proxy.ts
+  3. Initializes createServerClient with request.cookies and response.cookies
+  4. Calls await supabase.auth.getUser() -> Contacts Supabase Auth server
+     ├─ If access_token expired: GoTrue validates refresh_token -> issues new JWT
+     └─ setAll() fires:
+         ├─ Writes new token to request.cookies (hydrates downstream Server Components)
+         └─ Writes Set-Cookie to supabaseResponse.cookies (persists to browser)
+  5. Route Protection Check:
+     ├─ Unauthenticated + /wholesaler/* or /retailer/* ──> Redirects to /login
+     └─ Valid session ──> Returns modified supabaseResponse
+        │
+        ▼
+[ React Server Components (Layouts & Pages) ]
+  - Reads freshly renewed cookies via cookies() from next/headers
+  - Executes database queries and renders HTML without auth drops
+        │
+        ▼
+[ Browser Response ]
+  - Receives HTTP response with Set-Cookie header
+  - Storage is transparently updated without user disruption
+```
+
+##### 3. The Double-Writing Cookie Synchronization Pattern
+To guarantee that both downstream Server Components (rendering the *current* request) and the client browser (for *future* requests) have access to the refreshed token, `setAll` writes to two targets:
+
+```typescript
+// Location: src/utils/supabase/proxy.ts
+setAll(cookiesToSet) {
+  // 1. Mutate request headers so Server Components rendering this request see new cookies
+  cookiesToSet.forEach(({ name, value }) =>
+    request.cookies.set(name, value)
+  );
+  supabaseResponse = NextResponse.next({
+    request,
+  });
+  // 2. Mutate response headers so the browser persists the renewed token
+  cookiesToSet.forEach(({ name, value, options }) =>
+    supabaseResponse.cookies.set(name, value, options)
+  );
+}
+```
+
+##### 4. Cookie Forwarding on HTTP Redirects
+When Next.js issues an HTTP redirect via `NextResponse.redirect(url)`, it instantiates a fresh response object with an empty cookie jar. If `supabase.auth.getUser()` renewed an expiring session token during that request, returning `NextResponse.redirect(url)` directly drops the newly staged `Set-Cookie` headers.
+
+To guarantee that refreshed session cookies are preserved across redirects (e.g. unauthenticated redirects to `/login` or role boundary redirections), `src/utils/supabase/proxy.ts` implements a `redirectTo` helper that copies all staged cookies from `supabaseResponse`:
+
+```typescript
+function redirectTo(path: string) {
+  const url = request.nextUrl.clone();
+  url.pathname = path;
+  const redirectResponse = NextResponse.redirect(url);
+  supabaseResponse.cookies.getAll().forEach((cookie) => {
+    redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+  });
+  return redirectResponse;
+}
+```
+
+##### 5. Why `supabase.auth.getUser()` is Mandatory (Never `getSession()`)
+- **`getSession()`**: Reads the JWT payload directly from the raw cookie string without validating its signature or status against the Supabase Auth server. If an account is revoked, disabled, or the secret was rotated, `getSession()` returns stale credentials.
+- **`getUser()`**: Sends an authenticated network verification to Supabase GoTrue Auth, rigorously validating token integrity, checking account status, and triggering the automatic token refresh lifecycle.
+
+##### 6. Proxy Route Matcher Configuration
+To prevent Proxy from running on static image assets, favicons, and bundled JavaScript chunks, `src/proxy.ts` applies a negative-lookahead route filter:
+
+```typescript
+// Location: src/proxy.ts
+export const config = {
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
+};
+```
+
+#### 4. The PostgreSQL Automated User Trigger (`handle_new_user`)
 Rather than relying on client-side JavaScript to execute multiple separate `INSERT` statements across network hops, a PostgreSQL `SECURITY DEFINER` trigger guarantees atomic profile creation inside the database engine:
 
 ```sql
@@ -1100,7 +1206,7 @@ CREATE TRIGGER on_auth_user_created
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 ```
 
-#### 4. Database Domain Model & Schema Dictionary
+#### 5. Database Domain Model & Schema Dictionary
 The platform schema (`supabase_schema.sql`) organizes data into 6 relational domains:
 1. **Identity & Profiles**: 
    - `profiles`: Base table for all personas (`WHOLESALER`, `RETAILER`, `CUSTOMER`, `ADMIN`).
@@ -1470,46 +1576,74 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 12. Onboarding Page (2-Step Funnel)
+### 12. Onboarding Page (Server Component Route Guard)
 - **Location**: `src/app/(auth)/onboarding/page.tsx`
-- **What it does**:
-  - Step 2 in funnel: "Business Setup" with 2-step progress stepper (`1. Account Created` &rarr; `2. Business Setup`).
-  - Reads authenticated user session via `supabase.auth.getUser()`, automatically detecting `user.id` and `user.user_metadata.role` (`WHOLESALER` vs. `RETAILER`).
-  - Automatically redirects unauthenticated visitors to `/login`.
-  - Conditionally renders role-specific inputs and updates `public.wholesalers` (`warehouse_address`, `description`, `trade_license_number`) or `public.retailers` (`delivery_address`, `shop_category`, `trade_license_number`) using PostgreSQL RLS `auth.uid() = id`.
-  - On completion, renders direct entry CTA into role-specific dashboard (`/wholesaler/dashboard` or `/retailer/dashboard`).
+- **What it does**: Entrypoint for the `/onboarding` route implemented as an async React Server Component. Uses `createServerClient` from `src/utils/supabase/server.ts` to inspect the user's active session. Redirects unauthenticated visitors to `/login`. Queries `public.wholesalers` or `public.retailers` on the server before rendering; if the business address is already populated, triggers an immediate zero-flash HTTP 307 `redirect()` to the respective dashboard. If not onboarded, renders the colocated `<OnboardingForm />` passing verified server props (`userId`, `initialRole`).
 - **Key Snippet**:
   ```tsx
-  const { data: { user } } = await supabase.auth.getUser();
-  if (isWholesaler) {
-    await supabase
-      .from("wholesalers")
-      .update({
-        warehouse_address: warehouseAddress,
-        description: description || null,
-        trade_license_number: tradeLicense || null,
-      })
-      .eq("id", user.id);
-  } else {
-    await supabase
-      .from("retailers")
-      .update({
-        delivery_address: deliveryAddress,
-        shop_category: shopCategory || null,
-        trade_license_number: tradeLicense || null,
-      })
-      .eq("id", user.id);
+  import { redirect } from "next/navigation";
+  import { createClient } from "@/utils/supabase/server";
+  import OnboardingForm from "./OnboardingForm";
+
+  export default async function OnboardingPage() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) redirect("/login");
+
+    const role = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+    const tableName = role === "WHOLESALER" ? "wholesalers" : "retailers";
+    const addressField = role === "WHOLESALER" ? "warehouse_address" : "delivery_address";
+
+    const { data: profile } = await supabase
+      .from(tableName)
+      .select(addressField)
+      .eq("id", user.id)
+      .single();
+
+    const address = profile ? (profile as Record<string, string | null>)[addressField] : null;
+    if (address && address.trim() !== "") {
+      redirect(role === "WHOLESALER" ? "/wholesaler/dashboard" : "/retailer/dashboard");
+    }
+
+    return <OnboardingForm userId={user.id} initialRole={role} />;
   }
-  setIsLoading(false);
-  const targetDashboard = isWholesaler
-    ? "/wholesaler/dashboard"
-    : "/retailer/dashboard";
-  router.push(targetDashboard);
   ```
 
 ---
 
-### 13. Reusable StatCard Component
+### 13. Colocated Onboarding Form (Client Component)
+- **Location**: `src/app/(auth)/onboarding/OnboardingForm.tsx`
+- **What it does**: Interactive Client Component colocated beside `page.tsx` for Step 2 of the business setup funnel. Receives `userId` and `initialRole` from the Server Component, rendering the correct role form on the very first frame without client auth queries or loading spinners. Handles form submission, updates `public.wholesalers` or `public.retailers` via the browser client (`src/utils/supabase/client.ts`), and navigates to the role's dashboard.
+- **Key Snippet**:
+  ```tsx
+  "use client";
+
+  export default function OnboardingForm({ userId, initialRole }: OnboardingFormProps) {
+    const router = useRouter();
+    const [role, setRole] = useState<"WHOLESALER" | "RETAILER">(initialRole);
+    const isWholesaler = role === "WHOLESALER";
+    const [error, setError] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
+      e.preventDefault();
+      // updates wholesalers/retailers with warehouse/delivery address
+      const targetDashboard = isWholesaler ? "/wholesaler/dashboard" : "/retailer/dashboard";
+      router.push(targetDashboard);
+    }
+
+    return (
+      <form onSubmit={handleSubmit} noValidate>
+        {/* Role toggle, inputs, submit button */}
+      </form>
+    );
+  }
+  ```
+
+---
+
+### 14. Reusable StatCard Component
 - **Location**: `src/components/dashboard/StateCard.tsx`
 - **What it does**: Reusable metrics card accepting TypeScript props (`title`, `value`, `change`, `icon`). Uses `{ icon: Icon }` destructuring aliasing to render dynamic Lucide icon components with capitalized JSX syntax (`<Icon className="w-4 h-4" />`).
 - **Key Snippet**:
@@ -1539,7 +1673,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 14. Wholesaler Portal Layout
+### 15. Wholesaler Portal Layout
 - **Location**: `src/app/wholesaler/layout.tsx`
 - **What it does**: Nested portal layout shell for all `/wholesaler/*` routes implementing the industry-standard viewport-locked app shell (`h-screen overflow-hidden`). Pins the `<Header />` at the top, fixes `<WholesalerSidebar />` on the left, and confines scrolling strictly to the right-hand content panel (`flex-1 h-full overflow-y-auto`).
 - **Key Snippet**:
@@ -1562,7 +1696,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 15. Wholesaler Root Redirection Page
+### 16. Wholesaler Root Redirection Page
 - **Location**: `src/app/wholesaler/page.tsx`
 - **What it does**: React Server Component route handler at `/wholesaler` that immediately forwards incoming traffic to `/wholesaler/dashboard` via Next.js server-side `redirect()`.
 - **Key Snippet**:
@@ -1576,7 +1710,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 16. Wholesaler Dashboard Page
+### 17. Wholesaler Dashboard Page
 - **Location**: `src/app/wholesaler/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for wholesalers that renders the metrics grid using the reusable `<StatCard />` component.
 - **Key Snippet**:
@@ -1598,7 +1732,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 17. Wholesaler Orders Page
+### 18. Wholesaler Orders Page
 - **Location**: `src/app/wholesaler/orders/page.tsx`
 - **What it does**: Async React Server Component (zero client JavaScript bundle) that receives asynchronous `searchParams` (`Promise<{ status?: string; query?: string; date?: string }>`) directly from Next.js, combines server-side status tab filtering, text search matching, and calendar date filtering, renders the `<OrderSearch />` and `<OrderDateFilter />` leaf components inside `<Suspense>`, and displays the responsive order tracking table.
 - **Key Snippet**:
@@ -1644,7 +1778,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 18. Wholesaler Inventory Page
+### 19. Wholesaler Inventory Page
 - **Location**: `src/app/wholesaler/inventory/page.tsx`
 - **What it does**: Warehouse inventory and catalog page for wholesalers to manage product listings and stock.
 - **Key Snippet**:
@@ -1661,7 +1795,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 19. Retailer Portal Layout
+### 20. Retailer Portal Layout
 - **Location**: `src/app/retailer/layout.tsx`
 - **What it does**: Nested portal layout shell for all `/retailer/*` routes. Renders the shared logged-in `<Header />` at the top and wraps all child routes in a full-height container.
 - **Key Snippet**:
@@ -1682,7 +1816,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 20. Retailer Root Redirection Page
+### 21. Retailer Root Redirection Page
 - **Location**: `src/app/retailer/page.tsx`
 - **What it does**: React Server Component route handler at `/retailer` that immediately forwards incoming traffic to `/retailer/dashboard` via Next.js server-side `redirect()`.
 - **Key Snippet**:
@@ -1696,7 +1830,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 21. Retailer Dashboard Page
+### 22. Retailer Dashboard Page
 - **Location**: `src/app/retailer/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for retailers that renders retail-specific metrics (`Active Deliveries`, `Connected Wholesalers`, `Monthly Procurement`) using the reusable `<StatCard />` component.
 - **Key Snippet**:
@@ -1718,7 +1852,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 22. Reusable Button Component
+### 23. Reusable Button Component
 - **Location**: `src/components/ui/Button.tsx`
 - **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
 - **Key Snippet**:
@@ -1778,7 +1912,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 23. Theme Toggle Component
+### 24. Theme Toggle Component
 - **Location**: `src/components/ui/ThemeToggle.tsx`
 - **What it does**: Client Component that toggles the `.dark` class on `document.documentElement` (`<html>`), persists user choice in `localStorage`, and uses pure CSS toggling (`dark:hidden` / `hidden dark:block`) to eliminate hydration delays and icon pop-in.
 - **Key Snippet**:
@@ -1811,7 +1945,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 24. Order Search Component
+### 25. Order Search Component
 - **Location**: `src/components/dashboard/OrderSearch.tsx`
 - **What it does**: Client Component search input using `useSearchParams()`, `usePathname()`, and `useRouter()` to update the URL query parameter (`?query=...`) in real time, preserving active status filters and using `router.replace()` to avoid cluttering browser navigation history.
 - **Key Snippet**:
@@ -1853,7 +1987,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 25. Order Date Filter Component
+### 26. Order Date Filter Component
 - **Location**: `src/components/dashboard/OrderDateFilter.tsx`
 - **What it does**: Leaf Client Component date filter featuring a decorative left calendar icon matching the search bar, direct keyboard typing capability (`type="date"`), a single right-aligned chevron button to trigger the calendar popup, and native dark mode support (`color-scheme: dark`). Writes `?date=YYYY-MM-DD` to the URL while preserving existing `status` and `query` parameters.
 - **Key Snippet**:
@@ -1903,7 +2037,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 26. Database DDL & RLS Blueprint
+### 27. Database DDL & RLS Blueprint
 - **Location**: `supabase_schema.sql`
 - **What it does**: Master PostgreSQL DDL script containing 11 ENUM types, 15 domain tables (`profiles`, `wholesalers`, `retailers`, `admins`, `invitation_tokens`, `connections`, `kyc_documents`, `kyc_revision_history`, `categories`, `products`, `orders`, `order_items`, `invoices`, `order_status_history`, `notifications`), automated user provisioning triggers on `auth.users`, and Row Level Security (RLS) policies for Supabase deployment.
 - **Key Snippet**:
@@ -1933,7 +2067,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 27. Supabase Browser Client Helper
+### 28. Supabase Browser Client Helper
 - **Location**: `src/utils/supabase/client.ts`
 - **What it does**: Initializes the client-side Supabase client using `@supabase/ssr` `createBrowserClient`, reading `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for use inside Client Components (`"use client"`).
 - **Key Snippet**:
@@ -1952,7 +2086,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ---
 
-### 28. Supabase Server Client Helper
+### 29. Supabase Server Client Helper
 - **Location**: `src/utils/supabase/server.ts`
 - **What it does**: Initializes the server-side Supabase client using `@supabase/ssr` `createServerClient` and Next.js 15+ asynchronous `cookies()` from `next/headers`, enabling secure reading and writing of HTTP-only session cookies in Server Components, Server Actions, and Route Handlers.
 - **Key Snippet**:
@@ -1984,4 +2118,94 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
       }
     );
   }
+  ```
+
+---
+
+### 30. Supabase Proxy Client Helper
+- **Location**: `src/utils/supabase/proxy.ts`
+- **What it does**: Creates a Proxy-compatible Supabase client configured with request and response cookie synchronization via `createServerClient`. Invokes `supabase.auth.getUser()` to trigger automatic token refresh when short-lived access tokens expire, writes updated session tokens to both request and response headers, redirects unauthenticated visitors attempting to access protected routes to `/login`, and enforces role segregation between `WHOLESALER` and `RETAILER` portals.
+- **Key Snippet**:
+  ```typescript
+  import { createServerClient } from "@supabase/ssr";
+  import { type NextRequest, NextResponse } from "next/server";
+
+  export async function updateSession(request: NextRequest) {
+    let supabaseResponse = NextResponse.next({ request });
+
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll();
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+            supabaseResponse = NextResponse.next({ request });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              supabaseResponse.cookies.set(name, value, options)
+            );
+          },
+        },
+      }
+    );
+
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // Helper to carry over refreshed cookies during redirects
+    function redirectTo(path: string) {
+      const url = request.nextUrl.clone();
+      url.pathname = path;
+      const redirectResponse = NextResponse.redirect(url);
+      supabaseResponse.cookies.getAll().forEach((cookie) => {
+        redirectResponse.cookies.set(cookie.name, cookie.value, cookie);
+      });
+      return redirectResponse;
+    }
+
+    const isProtectedRoute =
+      request.nextUrl.pathname.startsWith("/wholesaler") ||
+      request.nextUrl.pathname.startsWith("/retailer");
+
+    // 1. Unauthenticated redirect
+    if (!user && isProtectedRoute) {
+      return redirectTo("/login");
+    }
+
+    // 2. Role segregation guard
+    if (user) {
+      const role = user.user_metadata?.role as "WHOLESALER" | "RETAILER";
+      if (role === "RETAILER" && request.nextUrl.pathname.startsWith("/wholesaler")) {
+        return redirectTo("/retailer/dashboard");
+      }
+      if (role === "WHOLESALER" && request.nextUrl.pathname.startsWith("/retailer")) {
+        return redirectTo("/wholesaler/dashboard");
+      }
+    }
+
+    return supabaseResponse;
+  }
+  ```
+
+---
+
+### 31. Next.js 16 Proxy (Request Interceptor & Route Guard)
+- **Location**: `src/proxy.ts`
+- **What it does**: Entrypoint for Next.js 16 Proxy (the official successor to deprecated `middleware.ts`). Exports a named `proxy(request: NextRequest)` function that executes `updateSession(request)` on incoming HTTP requests. Filters static assets (`_next/static`, `_next/image`, `favicon.ico`, and image extensions) via the `matcher` config to keep page loads fast while maintaining live session tokens and guarding protected routes.
+- **Key Snippet**:
+  ```typescript
+  import { type NextRequest } from "next/server";
+  import { updateSession } from "@/utils/supabase/proxy";
+
+  export async function proxy(request: NextRequest) {
+    return await updateSession(request);
+  }
+
+  export const config = {
+    matcher: [
+      "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    ],
+  };
   ```
