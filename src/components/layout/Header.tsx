@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ThemeToggle from "../ui/ThemeToggle";
 
 export default function Header() {
     return (
@@ -15,7 +16,8 @@ export default function Header() {
                 </Link>
 
                 {/* Right Actions: Sign In & Register */}
-                <div className="flex items-center gap-5">
+                <div className="flex items-center gap-4">
+                    <ThemeToggle />
                     <p>Hi John!</p>
                 </div>
             </div>

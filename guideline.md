@@ -31,8 +31,10 @@ deci-trade/
 │   │   │   └── onboarding/
 │   │   │       └── page.tsx        # Route: /onboarding (Step 2 business setup funnel)
 │   │   ├── wholesaler/     # Wholesaler portal routes
+│   │   │   ├── layout.tsx      # Nested layout: renders Header + portal shell
+│   │   │   ├── page.tsx        # Route: /wholesaler (Server redirect to /wholesaler/dashboard)
 │   │   │   └── dashboard/
-│   │   │       └── page.tsx        # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
+│   │   │       └── page.tsx    # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
 │   │   ├── favicon.ico
 │   │   ├── globals.css     # Global styles & Tailwind configuration
 │   │   ├── layout.tsx      # Root layout: <main> + Footer
@@ -128,21 +130,31 @@ Adding `noValidate` to `<form onSubmit={handleSubmit} noValidate>` disables defa
 
 ---
 
-### D. Navigation: Declarative `<Link>` vs. Programmatic `useRouter()`
+### D. Navigation: Declarative `<Link>`, Client `useRouter()`, and Server-Side `redirect()`
 
-Next.js provides two ways to navigate:
+Next.js provides three distinct ways to navigate:
 1. **Declarative Navigation (`<Link href="...">`)**:
    - Used when the **user clicks** a link or button.
    - Example: Navigating from the Header to `/login`, or from Login to `/registration`.
 2. **Programmatic Navigation (`useRouter().push(...)`)**:
-   - Used when your **code decides to navigate automatically** after an action completes.
-   - Example: After successful login verification, the code redirects the user to their portal:
+   - Used inside **Client Components** when JavaScript decides to navigate after an action (e.g. form submission):
      ```tsx
      import { useRouter } from "next/navigation";
 
      const router = useRouter();
      router.push("/wholesaler/dashboard");
      ```
+3. **Server-Side Redirection (`redirect(...)`)**:
+   - Used inside **React Server Components** to issue an HTTP 307 (Temporary) or 308 (Permanent) redirect before rendering any HTML.
+   - Example: Redirecting `/wholesaler` directly to the dashboard:
+     ```tsx
+     import { redirect } from "next/navigation";
+
+     export default function WholesalerPage() {
+       redirect("/wholesaler/dashboard");
+     }
+     ```
+   - Operates on the server, halts rendering immediately, and sends the redirect header before the client begins parsing the page. Ideal for auth guards, role gates, and URL aliases.
 
 ---
 
@@ -552,7 +564,42 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 12. Wholesaler Dashboard Page
+### 12. Wholesaler Portal Layout
+- **Location**: `src/app/wholesaler/layout.tsx`
+- **What it does**: Nested portal layout shell for all `/wholesaler/*` routes. Renders the shared logged-in `<Header />` at the top and wraps all child routes in a full-height container.
+- **Key Snippet**:
+  ```tsx
+  import Header from "@/components/layout/Header";
+
+  export default function WholesalerLayout({ children }: { children: React.ReactNode }) {
+    return (
+      <div className="flex flex-1 flex-col">
+        <Header />
+        <div className="flex flex-1 flex-col bg-neutral-50 dark:bg-black">
+          <div className="flex-1">{children}</div>
+        </div>
+      </div>
+    );
+  }
+  ```
+
+---
+
+### 13. Wholesaler Root Redirection Page
+- **Location**: `src/app/wholesaler/page.tsx`
+- **What it does**: React Server Component route handler at `/wholesaler` that immediately forwards incoming traffic to `/wholesaler/dashboard` via Next.js server-side `redirect()`.
+- **Key Snippet**:
+  ```tsx
+  import { redirect } from "next/navigation";
+
+  export default function WholesalerPage() {
+    redirect("/wholesaler/dashboard");
+  }
+  ```
+
+---
+
+### 14. Wholesaler Dashboard Page
 - **Location**: `src/app/wholesaler/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for wholesalers that renders the metrics grid using the reusable `<StatCard />` component.
 - **Key Snippet**:
@@ -574,7 +621,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 13. Reusable Button Component
+### 15. Reusable Button Component
 - **Location**: `src/components/ui/Button.tsx`
 - **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
 - **Key Snippet**:
@@ -634,7 +681,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 14. Theme Toggle Component
+### 16. Theme Toggle Component
 - **Location**: `src/components/ui/ThemeToggle.tsx`
 - **What it does**: Client Component that toggles the `.dark` class on `document.documentElement` (`<html>`), persists user choice in `localStorage`, and uses pure CSS toggling (`dark:hidden` / `hidden dark:block`) to eliminate hydration delays and icon pop-in.
 - **Key Snippet**:
