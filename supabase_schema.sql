@@ -88,8 +88,8 @@ CREATE TABLE public.profiles (
 CREATE TABLE public.wholesalers (
     id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
     description TEXT,
-    trade_license_number VARCHAR(100),
-    tax_id VARCHAR(100),
+    trade_license_number VARCHAR(100) NOT NULL DEFAULT '',
+    tax_id VARCHAR(100) NOT NULL DEFAULT '',
     warehouse_address TEXT NOT NULL DEFAULT '',
     rating DECIMAL(3, 2) NOT NULL DEFAULT 5.00,
     review_count INT NOT NULL DEFAULT 0,
@@ -105,7 +105,8 @@ CREATE TABLE public.wholesalers (
 -- Retailer domain details
 CREATE TABLE public.retailers (
     id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
-    trade_license_number VARCHAR(100),
+    trade_license_number VARCHAR(100) NOT NULL DEFAULT '',
+    tax_id VARCHAR(100),
     delivery_address TEXT NOT NULL DEFAULT '',
     shop_category VARCHAR(100),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

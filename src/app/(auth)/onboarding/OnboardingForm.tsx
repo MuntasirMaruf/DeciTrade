@@ -15,6 +15,7 @@ import {
     ArrowRight,
     CheckCircle2,
     LogOut,
+    Receipt,
 } from "lucide-react";
 
 const SHOP_CATEGORIES = [
@@ -49,9 +50,22 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
             const warehouseAddress = (formData.get("warehouse_address") as string).trim();
             const description = (formData.get("description") as string).trim();
             const tradeLicenseNumber = (formData.get("trade_license_number") as string).trim();
+            const taxId = (formData.get("tax_id") as string).trim();
 
             if (!warehouseAddress) {
                 setError("Warehouse / Dispatch Address is required.");
+                setIsLoading(false);
+                return;
+            }
+
+            if (!tradeLicenseNumber) {
+                setError("Trade License / Registration No. is required.");
+                setIsLoading(false);
+                return;
+            }
+
+            if (!taxId) {
+                setError("Tax ID / BIN / TIN is required for wholesalers.");
                 setIsLoading(false);
                 return;
             }
@@ -61,7 +75,8 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
                 .update({
                     warehouse_address: warehouseAddress,
                     description: description || null,
-                    trade_license_number: tradeLicenseNumber || null,
+                    trade_license_number: tradeLicenseNumber,
+                    tax_id: taxId,
                 })
                 .eq("id", userId);
 
@@ -74,9 +89,16 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
             const deliveryAddress = (formData.get("delivery_address") as string).trim();
             const shopCategory = (formData.get("shop_category") as string).trim();
             const tradeLicenseNumber = (formData.get("trade_license_number") as string).trim();
+            const taxId = (formData.get("tax_id") as string).trim();
 
             if (!deliveryAddress) {
                 setError("Store Delivery Address is required.");
+                setIsLoading(false);
+                return;
+            }
+
+            if (!tradeLicenseNumber) {
+                setError("Trade License Number is required.");
                 setIsLoading(false);
                 return;
             }
@@ -86,7 +108,8 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
                 .update({
                     delivery_address: deliveryAddress,
                     shop_category: shopCategory || null,
-                    trade_license_number: tradeLicenseNumber || null,
+                    trade_license_number: tradeLicenseNumber,
+                    tax_id: taxId || null,
                 })
                 .eq("id", userId);
 
@@ -199,14 +222,31 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
 
                         <div>
                             <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                                Trade License / Registration No. (Optional)
+                                Trade License / Registration No. <span className="text-red-500">*</span>
                             </label>
                             <div className="relative">
                                 <Tag className="absolute left-3 top-2.5 w-4 h-4 text-neutral-400" />
                                 <input
                                     type="text"
                                     name="trade_license_number"
+                                    required
                                     placeholder="e.g. TRAD/DNCC/123456/2024"
+                                    className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Tax ID / BIN / TIN <span className="text-red-500">*</span>
+                            </label>
+                            <div className="relative">
+                                <Receipt className="absolute left-3 top-2.5 w-4 h-4 text-neutral-400" />
+                                <input
+                                    type="text"
+                                    name="tax_id"
+                                    required
+                                    placeholder="e.g. 1234567890123"
                                     className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
                                 />
                             </div>
@@ -252,7 +292,7 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
 
                         <div>
                             <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                                Trade License Number (Optional)
+                                Trade License Number <span className="text-red-500">*</span>
                             </label>
                             <div className="relative">
                                 <Tag className="absolute left-3 top-2.5 w-4 h-4 text-neutral-400" />
@@ -260,6 +300,22 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
                                     type="text"
                                     name="trade_license_number"
                                     placeholder="e.g. TRAD/DSCC/654321/2024"
+                                    required
+                                    className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Tax ID / BIN / TIN (Optional)
+                            </label>
+                            <div className="relative">
+                                <Receipt className="absolute left-3 top-2.5 w-4 h-4 text-neutral-400" />
+                                <input
+                                    type="text"
+                                    name="tax_id"
+                                    placeholder="e.g. 1234567890123 (Optional)"
                                     className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
                                 />
                             </div>

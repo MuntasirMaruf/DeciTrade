@@ -59,6 +59,7 @@ deci-trade/
 │   │   │   ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
 │   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
 │   │   │   ├── Header.tsx      # Authenticated portal navbar with profile, role pill & sign out
+│   │   │   ├── OnboardingBanner.tsx # Pinned server-baked alert for incomplete business profile
 │   │   │   ├── WholesalerSidebar.tsx # Pinned navigation sidebar with route-aware active state
 │   │   │   └── Footer.tsx      # Global footer with dynamic year & links
 │   │   └── ui/             # Reusable design system primitives
@@ -831,12 +832,13 @@ This orders feature directly embodies the core architectural rule of Next.js: **
 DeciTrade implements a hybrid full-stack architecture combining **Next.js App Router** with **Supabase (PostgreSQL & GoTrue Auth)**.
 
 #### 1. The End-to-End Auth & Onboarding Lifecycle
-The user access and onboarding workflow spans 6 coordinated phases across the browser, Next.js server, Supabase Auth, and the PostgreSQL database:
+The user access and onboarding workflow spans 7 coordinated phases across the browser, Next.js server, Supabase Auth, and the PostgreSQL database:
 
 ```text
 1. Registration (/registration)
    └─ User submits: email, password, role ('WHOLESALER' | 'RETAILER'), business_name, phone_number
    └─ Next.js invokes: supabase.auth.signUp() with raw_user_meta_data
+   └─ Fast, non-blocking redirect straight to role dashboard (/wholesaler/dashboard or /retailer/dashboard)
    │
    ▼
 2. Automated Database Trigger (handle_new_user)
@@ -846,27 +848,31 @@ The user access and onboarding workflow spans 6 coordinated phases across the br
    └─ If 'RETAILER', initializes record in public.retailers
    │
    ▼
-3. Onboarding (/onboarding — Step 2 Business Setup)
-   └─ Server Component checks DB: if already completed -> HTTP 307 redirect to dashboard (zero flash)
-   └─ If not completed: renders colocated OnboardingForm for business setup
-   └─ User completes role-specific fields (warehouse_address or delivery_address, licenses)
-   └─ Updates public.wholesalers or public.retailers where id = auth.uid()
+3. Progressive Onboarding & Zero-Lag Layout Banner (Server Component Layouts)
+   └─ WholesalerLayout / RetailerLayout queries warehouse_address or delivery_address on server
+   └─ If incomplete: bakes <OnboardingBanner /> directly into initial HTML (0ms delay, 0 pop-in)
+   └─ User clicks "Complete Profile →" on the banner to visit /onboarding when ready
    │
    ▼
-4. Login & Dynamic Portal Routing (/login)
+4. Invited Onboarding Route (/onboarding)
+   └─ Server Component checks DB: if already completed -> zero-flash redirect to dashboard
+   └─ If incomplete: renders OnboardingForm with confirmed role pill (no redundant toggle buttons)
+   └─ On submit: writes address to DB and redirects to dashboard (banner vanishes automatically)
+   │
+   ▼
+5. Login Flow (/login)
    └─ User enters credentials -> supabase.auth.signInWithPassword()
-   └─ Supabase sets secure HttpOnly session cookie
-   └─ App queries public.profiles.role -> dynamically forwards to /wholesaler/dashboard or /retailer/dashboard
+   └─ Instant entry to role dashboard (no blocking sequential address query on login)
    │
    ▼
-5. Route Protection & Session Refresh (src/proxy.ts — Next.js 16 Proxy)
+6. Route Protection & Session Refresh (src/proxy.ts — Next.js 16 Proxy)
    └─ Intercepts requests to /wholesaler/* and /retailer/*
    └─ Automatically refreshes expired Supabase JWT session tokens
    └─ Blocks unauthenticated users -> redirects to /login
    └─ Enforces role segregation: prevents Retailers from accessing Wholesaler routes
    │
    ▼
-6. Portal Identity & Sign-Out (src/components/layout/Header.tsx)
+7. Portal Identity & Sign-Out (src/components/layout/Header.tsx)
    └─ React Server Component reads active session via createClient() -> supabase.auth.getUser()
    └─ Displays verified business_name and role pill in portal navbar
    └─ Native <form action={handleSignOut}> executes inline Server Action ("use server")
@@ -915,7 +921,7 @@ The registration pipeline executes across 4 sequential stages spanning the brows
  14. GoTrue returns HTTP 200 OK with User object, access_token (JWT), and refresh_token
  15. @supabase/ssr browser client writes session cookie (document.cookie)
  16. React 19 updates state: setIsLoading(false)
- 17. Programmatically forwards to Step 2 onboarding via router.push("/onboarding")
+ 17. Programmatically forwards to role dashboard via router.push(targetDashboard)
 ```
 
 ##### Stage 1: Browser Dispatch & Payload Construction
@@ -1221,9 +1227,9 @@ CREATE TRIGGER on_auth_user_created
 #### 5. Database Domain Model & Schema Dictionary
 The platform schema (`supabase_schema.sql`) organizes data into 6 relational domains:
 1. **Identity & Profiles**: 
-   - `profiles`: Base table for all personas (`WHOLESALER`, `RETAILER`, `CUSTOMER`, `ADMIN`).
-   - `wholesalers`: Warehouse address, minimum order amounts, accepted payment terms, catalog public toggles.
-   - `retailers`: Store delivery address, shop category.
+   - `profiles`: Base table for all personas (`WHOLESALER`, `RETAILER`, `CUSTOMER`, `ADMIN`) with `is_verified BOOLEAN NOT NULL DEFAULT FALSE`.
+   - `wholesalers`: `warehouse_address` (`TEXT NOT NULL DEFAULT ''`), `trade_license_number` (`VARCHAR(100) NOT NULL DEFAULT ''`), `tax_id` (`VARCHAR(100) NOT NULL DEFAULT ''`), minimum order amounts, accepted payment terms, catalog public toggles.
+   - `retailers`: `delivery_address` (`TEXT NOT NULL DEFAULT ''`), `trade_license_number` (`VARCHAR(100) NOT NULL DEFAULT ''`), `tax_id` (`VARCHAR(100)` optional/nullable), shop category.
    - `admins`: Role-Based Access Control (`admin_role`: `'SUPER_ADMIN'`, `'COMPLIANCE'`, `'SUPPORT'`, `'FINANCE'`), permissions array (`permissions TEXT[]`), department.
    - `CUSTOMER`: Pure consumers live directly in `profiles` with zero overhead.
 2. **Networking & KYC**: `invitation_tokens` (cryptographic, rate-limited invite links), `connections` (wholesaler-retailer links with state machine: `PENDING_REVIEW` $\rightarrow$ `ACTIVE`), `kyc_documents`, `kyc_revision_history`.
@@ -1322,6 +1328,45 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 3. **Elimination of Navigation Race Conditions**: In client-side logout (`await supabase.auth.signOut()` followed by `router.push('/login')`), component re-renders or concurrent layout transitions may fire before cookies have fully propagated across tabs, potentially causing flash-of-unauthorized content. The server action's `redirect()` halts execution immediately and delivers a canonical HTTP 303 redirect.
 
 ---
+#### 9. Progressive Onboarding & Verification Architecture (RSC Layout Join vs. Client Context)
+
+In DeciTrade, account onboarding and verification use the **3-State Progressive Onboarding model**: instead of forcibly locking users out of their dashboard, users enter their role portal immediately with features gated by business verification (`public.profiles.is_verified`).
+
+```text
+[ Incoming Request: /wholesaler/dashboard ]
+       │
+       ▼
+[ 1. Network Edge: src/proxy.ts ]
+   - Checks: Is user authenticated? (Yes)
+   - Checks: Role authorization match? (Yes)
+   - Passes request through with zero database queries at the edge
+       │
+       ▼
+[ 2. Server Layout: src/app/wholesaler/layout.tsx (RSC) ]
+   - Executes single PostgreSQL JOIN query via Supabase:
+     SELECT warehouse_address, trade_license_number, tax_id, profiles(is_verified)
+     FROM wholesalers JOIN profiles ON wholesalers.id = profiles.id WHERE id = auth.uid()
+   - Evaluates:
+     * isVerified = profiles.is_verified
+     * hasSubmittedOnboarding (Wholesaler) = warehouse_address.trim() && trade_license_number.trim() && tax_id.trim()
+     * hasSubmittedOnboarding (Retailer) = delivery_address.trim() && trade_license_number.trim()
+   - 3-State Lifecycle Resolution:
+     * If isVerified === true: bannerStatus = null (No banner, full features unlocked)
+     * If !isVerified && hasSubmittedOnboarding: bannerStatus = 'PENDING_REVIEW' (Blue under review banner)
+     * If !isVerified && !hasSubmittedOnboarding: bannerStatus = 'INCOMPLETE' (Amber setup banner)
+       │
+       ▼
+[ 3. Initial HTML Arrives in Browser ]
+   - 0ms pop-in lag: The banner is already baked into the initial HTML byte stream (CLS = 0)
+   - 0 client-side useEffect network waterfalls
+   - 1 single round-trip database query for the entire layout shell
+```
+
+##### Why Server Layout PostgreSQL JOIN Over Client Context?
+1. **Single Round-Trip Database Operation**: Both domain onboarding credentials (address, trade license) and identity verification (`is_verified`) are resolved together in a single relational join query.
+2. **Elimination of the Client Waterfall Lag**: Resolving the verification state directly on the server eliminates the 400ms–800ms banner pop-in caused by client-side hooks and multiple sequential network calls.
+3. **Strict Separation of Concerns**: Feature-locking logic throughout the portal only needs to check the boolean flag `if (!isVerified)`, completely decoupled from form submission details.
+
 
 ## 4. File Locations, Responsibilities & Snippets
 
@@ -1478,7 +1523,52 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 5. Wholesaler Sidebar
+### 5. Onboarding Alert Banner
+- **Location**: `src/components/layout/OnboardingBanner.tsx`
+- **What it does**: Pinned notification banner rendered immediately below the authenticated portal header when an account is incomplete or pending review. Receives `status` prop (`"INCOMPLETE"` or `"PENDING_REVIEW"`). Renders an amber alert with a link to `/onboarding` if address or trade license is missing, or a blue informational badge if onboarding is submitted and pending admin review.
+- **Key Snippet**:
+  ```tsx
+  export type VerificationBannerStatus = "INCOMPLETE" | "PENDING_REVIEW";
+
+  interface OnboardingBannerProps {
+    status: VerificationBannerStatus;
+  }
+
+  export default function OnboardingBanner({ status }: OnboardingBannerProps) {
+    if (status === "PENDING_REVIEW") {
+      return (
+        <aside aria-label="Verification pending notice" className="border-b border-sky-500/20 bg-sky-500/10 px-6 py-2.5 text-xs text-sky-800 dark:text-sky-200">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+            <div className="flex items-center gap-2 min-w-0">
+              <Clock className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+              <span className="truncate font-medium">Account verification pending. An admin will verify your account within 24 hours.</span>
+            </div>
+            <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-sky-200/60 dark:bg-sky-900/60 text-sky-800 dark:text-sky-300">Under Review</span>
+          </div>
+        </aside>
+      );
+    }
+
+    return (
+      <aside aria-label="Account setup notice" className="border-b border-amber-500/20 bg-amber-500/10 px-6 py-2.5 text-xs text-amber-800 dark:text-amber-200">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <span className="truncate font-medium">Account setup incomplete: Add your business address to unlock full trading features.</span>
+          </div>
+          <Link href="/onboarding" className="inline-flex shrink-0 items-center gap-1 font-semibold underline hover:no-underline">
+            <span>Complete Profile</span>
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </aside>
+    );
+  }
+  ```
+
+---
+
+### 6. Wholesaler Sidebar
 - **Location**: `src/components/layout/WholesalerSidebar.tsx`
 - **What it does**: Fixed navigation sidebar for the Wholesaler portal within the viewport-locked app shell. Uses `usePathname()` to detect active routes and highlight navigation links (`Dashboard`, `Orders`, `Inventory`). Occupies the full height of the body container (`w-64 shrink-0 h-full`) with internal scrolling (`overflow-y-auto`) so menu items remain reachable on short displays without moving the page.
 - **Key Snippet**:
@@ -1520,7 +1610,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 6. Footer
+### 7. Footer
 - **Location**: `src/components/layout/Footer.tsx`
 - **What it does**: Pure React Server Component displaying copyright, terms, privacy, and support links. Rendered on public marketing pages (`src/app/page.tsx`), omitted from portal layouts to maintain the clean app shell.
 - **Key Snippet**:
@@ -1538,7 +1628,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 7. Homepage
+### 8. Homepage
 - **Location**: `src/app/page.tsx`
 - **What it does**: The public landing page displaying `SiteHeader` and the hero section with platform headlines and call-to-action buttons.
 - **Key Snippet**:
@@ -1559,7 +1649,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 8. Authentication Nested Layout
+### 9. Authentication Nested Layout
 - **Location**: `src/app/(auth)/layout.tsx`
 - **What it does**: A layout wrapper dedicated to authentication screens. It renders the `AuthHeader` at the top and centers form cards horizontally and vertically.
 - **Key Snippet**:
@@ -1580,7 +1670,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 9. Validation Utilities
+### 10. Validation Utilities
 - **Location**: `src/lib/validator.ts`
 - **What it does**: Exports reusable regular expressions for client-side form validation.
 - **Key Snippet**:
@@ -1592,36 +1682,41 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 10. Login Page
+### 11. Login Page
 - **Location**: `src/app/(auth)/login/page.tsx`
 - **What it does**:
   - Sign-in form with client-side email and password validation.
   - Password visibility toggle (`Eye` / `EyeOff`) driven by local `useState`.
   - Disables default browser popups using `noValidate`.
-  - Dispatches credentials on submit and routes dynamically to the portal dashboard.
+  - Calls `supabase.auth.signInWithPassword()` and executes instant client-side forward to the user's role dashboard (`/wholesaler/dashboard` or `/retailer/dashboard`), deferring incomplete profile notifications to the non-blocking layout banner.
 - **Key Snippet**:
   ```tsx
-  const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
-    e.preventDefault();
-    // Validate credentials...
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    router.push("/wholesaler/dashboard");
-    // Live Supabase integration: supabase.auth.signInWithPassword()
+  const { data, error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (signInError) {
+    setError(signInError.message);
+    setIsLoading(false);
+    return;
   }
+  const role = (data.user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+  setIsLoading(false);
+  const targetDashboard = role === "WHOLESALER"
+    ? "/wholesaler/dashboard"
+    : "/retailer/dashboard";
+  router.push(targetDashboard);
   ```
 
 ---
 
-### 11. Registration Page
+### 12. Registration Page
 - **Location**: `src/app/(auth)/registration/page.tsx`
 - **What it does**:
   - Account creation with business type selection tabs (Wholesaler vs. Retailer).
   - Validates `business_name`, `phone_number` (`PHONE_REGEX`), `email` (`EMAIL_REGEX`), and `password` (`PASSWORD_REGEX`).
   - Calls client-side `supabase.auth.signUp()` passing user metadata (`role`, `business_name`, `phone_number`), triggering the PostgreSQL `handle_new_user()` trigger for automated profile and domain entity provisioning.
-  - Displays error banners on auth failure and forwards to the Step 2 onboarding setup (`/onboarding`) on success.
+  - Displays error banners on auth failure and executes instant client-side forward to the user's role dashboard, allowing immediate portal access with progressive onboarding notification.
   - **Dev Setup Requirement**: Supabase project setting must have "Confirm email" toggled **OFF** (`Authentication` &rarr; `Sign In / Providers` &rarr; `Email`) during local development so accounts are immediately active without an external SMTP server.
 - **Key Snippet**:
   ```tsx
@@ -1643,38 +1738,45 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
     return;
   }
   setIsLoading(false);
-  router.push("/onboarding");
+  const targetDashboard = selectedRole === "WHOLESALER"
+    ? "/wholesaler/dashboard"
+    : "/retailer/dashboard";
+  router.push(targetDashboard);
   ```
 
 ---
 
-### 12. Onboarding Page (Server Component Route Guard)
+### 13. Onboarding Page (Server Component Route Guard)
 - **Location**: `src/app/(auth)/onboarding/page.tsx`
-- **What it does**: Entrypoint for the `/onboarding` route implemented as an async React Server Component. Uses `createServerClient` from `src/utils/supabase/server.ts` to inspect the user's active session. Redirects unauthenticated visitors to `/login`. Queries `public.wholesalers` or `public.retailers` on the server before rendering; if the business address is already populated, triggers an immediate zero-flash HTTP 307 `redirect()` to the respective dashboard. If not onboarded, renders the colocated `<OnboardingForm />` passing verified server props (`userId`, `initialRole`).
+- **What it does**: React Server Component route handler for `/onboarding`. Verifies user authentication and checks mandatory onboarding credentials via a single relational join query with `profiles(is_verified)` (`warehouse_address`, `trade_license_number`, and `tax_id` for Wholesalers; `delivery_address` and `trade_license_number` for Retailers). If the account is already verified or all mandatory onboarding fields are submitted, immediately redirects to the respective portal dashboard. Otherwise, renders `<OnboardingForm />`.
 - **Key Snippet**:
   ```tsx
-  import { redirect } from "next/navigation";
-  import { createClient } from "@/utils/supabase/server";
-  import OnboardingForm from "./OnboardingForm";
-
   export default async function OnboardingPage() {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-
     if (!user) redirect("/login");
 
     const role = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
     const tableName = role === "WHOLESALER" ? "wholesalers" : "retailers";
     const addressField = role === "WHOLESALER" ? "warehouse_address" : "delivery_address";
+    const selectQuery = role === "WHOLESALER"
+      ? "warehouse_address, trade_license_number, tax_id, profiles(is_verified)"
+      : "delivery_address, trade_license_number, profiles(is_verified)";
 
-    const { data: profile } = await supabase
+    const { data: details } = await supabase
       .from(tableName)
-      .select(addressField)
+      .select(selectQuery)
       .eq("id", user.id)
       .single();
 
-    const address = profile ? (profile as Record<string, string | null>)[addressField] : null;
-    if (address && address.trim() !== "") {
+    const record = details as Record<string, any> | null;
+    const profile = Array.isArray(record?.profiles) ? record?.profiles[0] : record?.profiles;
+    const isVerified = Boolean(profile?.is_verified);
+    const hasAddress = Boolean(record?.[addressField]?.trim());
+    const hasTradeLicense = Boolean(record?.trade_license_number?.trim());
+    const hasTaxId = role === "WHOLESALER" ? Boolean(record?.tax_id?.trim()) : true;
+
+    if (isVerified || (hasAddress && hasTradeLicense && hasTaxId)) {
       redirect(role === "WHOLESALER" ? "/wholesaler/dashboard" : "/retailer/dashboard");
     }
 
@@ -1684,38 +1786,31 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 13. Colocated Onboarding Form (Client Component)
+### 14. Colocated Onboarding Form (Client Component)
 - **Location**: `src/app/(auth)/onboarding/OnboardingForm.tsx`
-- **What it does**: Interactive Client Component colocated beside `page.tsx` for Step 2 of the business setup funnel. Receives `userId` and `initialRole` from the Server Component, rendering the correct role form on the very first frame without client auth queries or loading spinners. Handles form submission, updates `public.wholesalers` or `public.retailers` via the browser client (`src/utils/supabase/client.ts`), and navigates to the role's dashboard.
+- **What it does**: Interactive Client Component colocated beside `page.tsx` for Step 2 of the business setup funnel. Receives `userId` and `initialRole` from the Server Component, rendering confirmed account type without redundant interactive role toggle buttons. Enforces required fields (`warehouse_address`, `trade_license_number`, and `tax_id` for Wholesalers; `delivery_address` and `trade_license_number` for Retailers with optional `tax_id`). Updates `public.wholesalers` or `public.retailers` via the browser client (`src/utils/supabase/client.ts`) without auto-verifying, navigating directly to the dashboard where the layout reflects verification state.
 - **Key Snippet**:
   ```tsx
   "use client";
 
   export default function OnboardingForm({ userId, initialRole }: OnboardingFormProps) {
     const router = useRouter();
-    const [role, setRole] = useState<"WHOLESALER" | "RETAILER">(initialRole);
-    const isWholesaler = role === "WHOLESALER";
+    const isWholesaler = initialRole === "WHOLESALER";
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
     async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
       e.preventDefault();
-      // updates wholesalers/retailers with warehouse/delivery address
+      // Validates address, trade license & tax_id (wholesaler mandatory, retailer optional)
+      // Updates role table (wholesalers or retailers)
       const targetDashboard = isWholesaler ? "/wholesaler/dashboard" : "/retailer/dashboard";
       router.push(targetDashboard);
     }
-
-    return (
-      <form onSubmit={handleSubmit} noValidate>
-        {/* Role toggle, inputs, submit button */}
-      </form>
-    );
-  }
   ```
 
 ---
 
-### 14. Reusable StatCard Component
+### 15. Reusable StatCard Component
 - **Location**: `src/components/dashboard/StateCard.tsx`
 - **What it does**: Reusable metrics card accepting TypeScript props (`title`, `value`, `change`, `icon`). Uses `{ icon: Icon }` destructuring aliasing to render dynamic Lucide icon components with capitalized JSX syntax (`<Icon className="w-4 h-4" />`).
 - **Key Snippet**:
@@ -1745,18 +1840,35 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 15. Wholesaler Portal Layout
+### 16. Wholesaler Portal Layout
 - **Location**: `src/app/wholesaler/layout.tsx`
-- **What it does**: Nested portal layout shell for all `/wholesaler/*` routes implementing the industry-standard viewport-locked app shell (`h-screen overflow-hidden`). Pins the `<Header />` at the top, fixes `<WholesalerSidebar />` on the left, and confines scrolling strictly to the right-hand content panel (`flex-1 h-full overflow-y-auto`).
+- **What it does**: Nested portal layout shell for all `/wholesaler/*` routes implementing the industry-standard viewport-locked app shell (`h-screen overflow-hidden`). Asynchronously executes a single PostgreSQL JOIN query on the server to retrieve `warehouse_address`, `trade_license_number`, `tax_id`, and `profiles(is_verified)`. Resolves the 3-state banner status (`null`, `"PENDING_REVIEW"`, or `"INCOMPLETE"`) with zero layout shift (CLS = 0) and zero client hydration delay.
 - **Key Snippet**:
   ```tsx
-  import Header from "@/components/layout/Header";
-  import WholesalerSidebar from "@/components/layout/WholesalerSidebar";
+  export default async function WholesalerLayout({ children }: { children: React.ReactNode }) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  export default function WholesalerLayout({ children }: { children: React.ReactNode }) {
+    const { data: wholesaler } = await supabase
+      .from("wholesalers")
+      .select(`warehouse_address, trade_license_number, tax_id, profiles(is_verified)`)
+      .eq("id", user?.id)
+      .single();
+
+    const profile = Array.isArray(wholesaler?.profiles) ? wholesaler?.profiles[0] : wholesaler?.profiles;
+    const isVerified = Boolean(profile?.is_verified);
+    const hasSubmittedOnboarding = Boolean(
+      wholesaler?.warehouse_address?.trim() && 
+      wholesaler?.trade_license_number?.trim() &&
+      wholesaler?.tax_id?.trim()
+    );
+
+    const bannerStatus = isVerified ? null : hasSubmittedOnboarding ? "PENDING_REVIEW" : "INCOMPLETE";
+
     return (
       <div className="flex h-screen flex-col overflow-hidden">
         <Header />
+        {bannerStatus && <OnboardingBanner status={bannerStatus} />}
         <div className="flex flex-1 overflow-hidden bg-neutral-50 dark:bg-black">
           <WholesalerSidebar />
           <div className="flex-1 h-full overflow-y-auto min-w-0">{children}</div>
@@ -1768,7 +1880,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 16. Wholesaler Root Redirection Page
+### 17. Wholesaler Root Redirection Page
 - **Location**: `src/app/wholesaler/page.tsx`
 - **What it does**: React Server Component route handler at `/wholesaler` that immediately forwards incoming traffic to `/wholesaler/dashboard` via Next.js server-side `redirect()`.
 - **Key Snippet**:
@@ -1782,7 +1894,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 17. Wholesaler Dashboard Page
+### 18. Wholesaler Dashboard Page
 - **Location**: `src/app/wholesaler/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for wholesalers that renders the metrics grid using the reusable `<StatCard />` component.
 - **Key Snippet**:
@@ -1804,7 +1916,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 18. Wholesaler Orders Page
+### 19. Wholesaler Orders Page
 - **Location**: `src/app/wholesaler/orders/page.tsx`
 - **What it does**: Async React Server Component (zero client JavaScript bundle) that receives asynchronous `searchParams` (`Promise<{ status?: string; query?: string; date?: string }>`) directly from Next.js, combines server-side status tab filtering, text search matching, and calendar date filtering, renders the `<OrderSearch />` and `<OrderDateFilter />` leaf components inside `<Suspense>`, and displays the responsive order tracking table.
 - **Key Snippet**:
@@ -1850,7 +1962,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 19. Wholesaler Inventory Page
+### 20. Wholesaler Inventory Page
 - **Location**: `src/app/wholesaler/inventory/page.tsx`
 - **What it does**: Warehouse inventory and catalog page for wholesalers to manage product listings and stock.
 - **Key Snippet**:
@@ -1867,17 +1979,31 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 20. Retailer Portal Layout
+### 21. Retailer Portal Layout
 - **Location**: `src/app/retailer/layout.tsx`
-- **What it does**: Nested portal layout shell for all `/retailer/*` routes. Renders the shared logged-in `<Header />` at the top and wraps all child routes in a full-height container.
+- **What it does**: Nested portal layout shell for all `/retailer/*` routes. Asynchronously executes a single PostgreSQL JOIN query to retrieve `delivery_address`, `trade_license_number`, and `profiles(is_verified)`, determining whether to render `<OnboardingBanner status={bannerStatus} />` with zero layout shift.
 - **Key Snippet**:
   ```tsx
-  import Header from "@/components/layout/Header";
+  export default async function RetailerLayout({ children }: { children: React.ReactNode }) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  export default function RetailerLayout({ children }: { children: React.ReactNode }) {
+    const { data: retailer } = await supabase
+      .from("retailers")
+      .select(`delivery_address, trade_license_number, profiles(is_verified)`)
+      .eq("id", user?.id)
+      .single();
+
+    const profile = Array.isArray(retailer?.profiles) ? retailer?.profiles[0] : retailer?.profiles;
+    const isVerified = Boolean(profile?.is_verified);
+    const hasSubmittedOnboarding = Boolean(retailer?.delivery_address?.trim() && retailer?.trade_license_number?.trim());
+
+    const bannerStatus = isVerified ? null : hasSubmittedOnboarding ? "PENDING_REVIEW" : "INCOMPLETE";
+
     return (
       <div className="flex flex-1 flex-col">
         <Header />
+        {bannerStatus && <OnboardingBanner status={bannerStatus} />}
         <div className="flex flex-1 flex-col bg-neutral-50 dark:bg-black">
           <div className="flex-1">{children}</div>
         </div>
@@ -1888,7 +2014,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 21. Retailer Root Redirection Page
+### 22. Retailer Root Redirection Page
 - **Location**: `src/app/retailer/page.tsx`
 - **What it does**: React Server Component route handler at `/retailer` that immediately forwards incoming traffic to `/retailer/dashboard` via Next.js server-side `redirect()`.
 - **Key Snippet**:
@@ -1902,7 +2028,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 22. Retailer Dashboard Page
+### 23. Retailer Dashboard Page
 - **Location**: `src/app/retailer/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for retailers that renders retail-specific metrics (`Active Deliveries`, `Connected Wholesalers`, `Monthly Procurement`) using the reusable `<StatCard />` component.
 - **Key Snippet**:
@@ -1924,7 +2050,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 23. Reusable Button Component
+### 24. Reusable Button Component
 - **Location**: `src/components/ui/Button.tsx`
 - **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
 - **Key Snippet**:
@@ -1984,7 +2110,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 24. Theme Toggle Component
+### 25. Theme Toggle Component
 - **Location**: `src/components/ui/ThemeToggle.tsx`
 - **What it does**: Client Component that toggles the `.dark` class on `document.documentElement` (`<html>`), persists user choice in `localStorage`, and uses pure CSS toggling (`dark:hidden` / `hidden dark:block`) to eliminate hydration delays and icon pop-in.
 - **Key Snippet**:
@@ -2017,7 +2143,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 25. Order Search Component
+### 26. Order Search Component
 - **Location**: `src/components/dashboard/OrderSearch.tsx`
 - **What it does**: Client Component search input using `useSearchParams()`, `usePathname()`, and `useRouter()` to update the URL query parameter (`?query=...`) in real time, preserving active status filters and using `router.replace()` to avoid cluttering browser navigation history.
 - **Key Snippet**:
@@ -2059,7 +2185,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 26. Order Date Filter Component
+### 27. Order Date Filter Component
 - **Location**: `src/components/dashboard/OrderDateFilter.tsx`
 - **What it does**: Leaf Client Component date filter featuring a decorative left calendar icon matching the search bar, direct keyboard typing capability (`type="date"`), a single right-aligned chevron button to trigger the calendar popup, and native dark mode support (`color-scheme: dark`). Writes `?date=YYYY-MM-DD` to the URL while preserving existing `status` and `query` parameters.
 - **Key Snippet**:
@@ -2109,7 +2235,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 27. Database DDL & RLS Blueprint
+### 28. Database DDL & RLS Blueprint
 - **Location**: `supabase_schema.sql`
 - **What it does**: Master PostgreSQL DDL script containing 11 ENUM types, 15 domain tables (`profiles`, `wholesalers`, `retailers`, `admins`, `invitation_tokens`, `connections`, `kyc_documents`, `kyc_revision_history`, `categories`, `products`, `orders`, `order_items`, `invoices`, `order_status_history`, `notifications`), automated user provisioning triggers on `auth.users`, and Row Level Security (RLS) policies for Supabase deployment.
 - **Key Snippet**:
@@ -2139,7 +2265,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 28. Supabase Browser Client Helper
+### 29. Supabase Browser Client Helper
 - **Location**: `src/utils/supabase/client.ts`
 - **What it does**: Initializes the client-side Supabase client using `@supabase/ssr` `createBrowserClient`, reading `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for use inside Client Components (`"use client"`).
 - **Key Snippet**:
@@ -2158,7 +2284,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 29. Supabase Server Client Helper
+### 30. Supabase Server Client Helper
 - **Location**: `src/utils/supabase/server.ts`
 - **What it does**: Initializes the server-side Supabase client using `@supabase/ssr` `createServerClient` and Next.js 15+ asynchronous `cookies()` from `next/headers`, enabling secure reading and writing of HTTP-only session cookies in Server Components, Server Actions, and Route Handlers.
 - **Key Snippet**:
@@ -2194,7 +2320,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 30. Supabase Proxy Client Helper
+### 31. Supabase Proxy Client Helper
 - **Location**: `src/utils/supabase/proxy.ts`
 - **What it does**: Creates a Proxy-compatible Supabase client configured with request and response cookie synchronization via `createServerClient`. Invokes `supabase.auth.getUser()` to trigger automatic token refresh when short-lived access tokens expire, writes updated session tokens to both request and response headers, redirects unauthenticated visitors attempting to access protected routes to `/login`, prevents authenticated users from viewing `/login` or `/registration` by redirecting to their role dashboard, and enforces role segregation between `WHOLESALER` and `RETAILER` portals.
 - **Key Snippet**:
@@ -2275,7 +2401,7 @@ In DeciTrade, terminating an authenticated user session is architected as a pure
 
 ---
 
-### 31. Next.js 16 Proxy (Request Interceptor & Route Guard)
+### 32. Next.js 16 Proxy (Request Interceptor & Route Guard)
 - **Location**: `src/proxy.ts`
 - **What it does**: Entrypoint for Next.js 16 Proxy (the official successor to deprecated `middleware.ts`). Exports a named `proxy(request: NextRequest)` function that executes `updateSession(request)` on incoming HTTP requests. Filters static assets (`_next/static`, `_next/image`, `favicon.ico`, and image extensions) via the `matcher` config to keep page loads fast while maintaining live session tokens and guarding protected routes.
 - **Key Snippet**:

@@ -1,20 +1,65 @@
 import Header from "@/components/layout/Header";
+import OnboardingBanner from "@/components/layout/OnboardingBanner";
 import WholesalerSidebar from "@/components/layout/WholesaserSidebar";
+import { createClient } from "@/utils/supabase/server";
 
-export default function WholesalerLayout({
+export default async function WholesalerLayout({
     children,
 }: {
     children: React.ReactNode;
 }) {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    // Single JOIN query: fetch address, license, tax ID, and verification status together
+    const { data: wholesaler } = await supabase
+        .from("wholesalers")
+        .select(`
+            warehouse_address,
+            trade_license_number,
+            tax_id,
+            profiles (
+                is_verified
+            )
+        `)
+        .eq("id", user?.id)
+        .single();
+
+    const profile = Array.isArray(wholesaler?.profiles)
+        ? wholesaler?.profiles[0]
+        : wholesaler?.profiles;
+
+    const isVerified = Boolean(profile?.is_verified);
+
+    // Wholesaler requires address, trade license, AND tax ID
+    const hasSubmittedOnboarding = Boolean(
+        wholesaler?.warehouse_address?.trim() &&
+        wholesaler?.trade_license_number?.trim() &&
+        wholesaler?.tax_id?.trim()
+    );
+
+    const bannerStatus = isVerified
+        ? null
+        : hasSubmittedOnboarding
+            ? "PENDING_REVIEW"
+            : "INCOMPLETE";
+
     return (
         <div className="flex h-screen flex-col overflow-hidden">
-            {/* Header locked at the top */}
+            {/* Header locked at top */}
             <Header />
-            {/* Portal Body Shell (fills remaining screen height) */}
+
+            {/* Banner: Incomplete (Amber), Pending (Blue), or hidden if Verified */}
+            {bannerStatus && <OnboardingBanner status={bannerStatus} />}
+
+            {/* Portal Body Shell */}
             <div className="flex flex-1 overflow-hidden bg-neutral-50 dark:bg-black">
-                {/* Sidebar: fills height, cannot scroll with page */}
+                {/* Sidebar */}
                 <WholesalerSidebar />
-                {/* Content Area: ONLY this container scrolls */}
+
+                {/* Content Area */}
                 <div className="flex-1 h-full overflow-y-auto min-w-0">
                     {children}
                 </div>

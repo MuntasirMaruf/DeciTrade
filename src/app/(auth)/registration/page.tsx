@@ -93,7 +93,11 @@ export default function RegistrationPage() {
 
         setIsLoading(false);
 
-        router.push("/onboarding");
+        // Direct entry to portal (Banner handles incomplete onboarding)
+        const targetDashboard = selectedRole === "WHOLESALER"
+            ? "/wholesaler/dashboard"
+            : "/retailer/dashboard";
+        router.push(targetDashboard);
     }
 
     return (

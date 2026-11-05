@@ -52,29 +52,13 @@ export default function LoginPage() {
 
         // 1. Identify registered role
         const role = (data.user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
-        const tableName = role === "WHOLESALER" ? "wholesalers" : "retailers";
-        const addressField = role === "WHOLESALER" ? "warehouse_address" : "delivery_address";
-
-        // 2. Check if the business profile setup is already complete
-        const { data: profile } = await supabase
-            .from(tableName)
-            .select(addressField)
-            .eq("id", data.user.id)
-            .single();
-
-        const address = profile ? (profile as Record<string, string | null>)[addressField] : null;
-
         setIsLoading(false);
 
-        // 3. Smart Redirect: resume onboarding or enter dashboard
-        if (!address || address.trim() === "") {
-            router.push("/onboarding");
-        } else {
-            const targetDashboard = role === "WHOLESALER"
-                ? "/wholesaler/dashboard"
-                : "/retailer/dashboard";
-            router.push(targetDashboard);
-        }
+        // 2. Direct entry to portal (Banner handles incomplete onboarding)
+        const targetDashboard = role === "WHOLESALER"
+            ? "/wholesaler/dashboard"
+            : "/retailer/dashboard";
+        router.push(targetDashboard);
     }
 
     return (
