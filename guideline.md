@@ -1103,7 +1103,9 @@ Next.js 16 Proxy executes on the network boundary *before* any request reaches a
          └─ Writes Set-Cookie to supabaseResponse.cookies (persists to browser)
   5. Route Protection Check:
      ├─ Unauthenticated + /wholesaler/* or /retailer/* ──> Redirects to /login
-     └─ Valid session ──> Returns modified supabaseResponse
+     ├─ Authenticated + /login or /registration ──> Redirects to role dashboard
+     ├─ Cross-role access (e.g. Retailer on /wholesaler/*) ──> Redirects to own dashboard
+     └─ Valid authorized request ──> Returns modified supabaseResponse
         │
         ▼
 [ React Server Components (Layouts & Pages) ]
@@ -2125,7 +2127,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ### 30. Supabase Proxy Client Helper
 - **Location**: `src/utils/supabase/proxy.ts`
-- **What it does**: Creates a Proxy-compatible Supabase client configured with request and response cookie synchronization via `createServerClient`. Invokes `supabase.auth.getUser()` to trigger automatic token refresh when short-lived access tokens expire, writes updated session tokens to both request and response headers, redirects unauthenticated visitors attempting to access protected routes to `/login`, and enforces role segregation between `WHOLESALER` and `RETAILER` portals.
+- **What it does**: Creates a Proxy-compatible Supabase client configured with request and response cookie synchronization via `createServerClient`. Invokes `supabase.auth.getUser()` to trigger automatic token refresh when short-lived access tokens expire, writes updated session tokens to both request and response headers, redirects unauthenticated visitors attempting to access protected routes to `/login`, prevents authenticated users from viewing `/login` or `/registration` by redirecting to their role dashboard, and enforces role segregation between `WHOLESALER` and `RETAILER` portals.
 - **Key Snippet**:
   ```typescript
   import { createServerClient } from "@supabase/ssr";
@@ -2175,9 +2177,21 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
       return redirectTo("/login");
     }
 
-    // 2. Role segregation guard
+    // 2. Prevent authenticated users from visiting /login & enforce role boundaries
     if (user) {
-      const role = user.user_metadata?.role as "WHOLESALER" | "RETAILER";
+      const role = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+      const targetDashboard = role === "WHOLESALER"
+        ? "/wholesaler/dashboard"
+        : "/retailer/dashboard";
+
+      // A. If already logged in, bounce away from /login and /registration
+      const isAuthRoute =
+        request.nextUrl.pathname === "/login" ||
+        request.nextUrl.pathname === "/registration";
+
+      if (isAuthRoute) {
+        return redirectTo(targetDashboard);
+      }
       if (role === "RETAILER" && request.nextUrl.pathname.startsWith("/wholesaler")) {
         return redirectTo("/retailer/dashboard");
       }

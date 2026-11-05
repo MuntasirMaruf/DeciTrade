@@ -57,16 +57,28 @@ export async function updateSession(request: NextRequest) {
         return redirectTo("/login");
     }
 
-    // 2. If logged in, enforce role boundaries
+    // 2. If logged in, prevent visiting /login & enforce role boundaries
     if (user) {
-        const role = user.user_metadata?.role as "WHOLESALER" | "RETAILER";
+        const role = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+        const targetDashboard = role === "WHOLESALER"
+            ? "/wholesaler/dashboard"
+            : "/retailer/dashboard";
 
-        // If a Retailer tries to view Wholesaler pages, kick them to Retailer dashboard
+        // A. If already logged in, bounce away from /login and /registration
+        const isAuthRoute =
+            request.nextUrl.pathname === "/login" ||
+            request.nextUrl.pathname === "/registration";
+
+        if (isAuthRoute) {
+            return redirectTo(targetDashboard);
+        }
+
+        // B. If a Retailer tries to view Wholesaler pages, kick them to Retailer dashboard
         if (role === "RETAILER" && request.nextUrl.pathname.startsWith("/wholesaler")) {
             return redirectTo("/retailer/dashboard");
         }
 
-        // If a Wholesaler tries to view Retailer pages, kick them to Wholesaler dashboard
+        // C. If a Wholesaler tries to view Retailer pages, kick them to Wholesaler dashboard
         if (role === "WHOLESALER" && request.nextUrl.pathname.startsWith("/retailer")) {
             return redirectTo("/wholesaler/dashboard");
         }

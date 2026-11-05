@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Button from "@/components/ui/Button";
+import { createClient } from "@/utils/supabase/client";
 
 export default function LoginPage() {
     const router = useRouter();
@@ -17,7 +18,6 @@ export default function LoginPage() {
     async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault();
         setError(null);
-
 
         const formData = new FormData(e.currentTarget);
         const email = (formData.get("email") as string).trim();
@@ -35,14 +35,46 @@ export default function LoginPage() {
             setError("Password is required.");
             return;
         }
-        if (password.length < 6) {
-            setError("Invalid credentials. Password must be at least 6 characters.");
-            return;
-        }
 
         setIsLoading(true);
 
-        router.push("/wholesaler/dashboard");
+        const supabase = createClient();
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
+
+        if (signInError) {
+            setError(signInError.message);
+            setIsLoading(false);
+            return;
+        }
+
+        // 1. Identify registered role
+        const role = (data.user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+        const tableName = role === "WHOLESALER" ? "wholesalers" : "retailers";
+        const addressField = role === "WHOLESALER" ? "warehouse_address" : "delivery_address";
+
+        // 2. Check if the business profile setup is already complete
+        const { data: profile } = await supabase
+            .from(tableName)
+            .select(addressField)
+            .eq("id", data.user.id)
+            .single();
+
+        const address = profile ? (profile as Record<string, string | null>)[addressField] : null;
+
+        setIsLoading(false);
+
+        // 3. Smart Redirect: resume onboarding or enter dashboard
+        if (!address || address.trim() === "") {
+            router.push("/onboarding");
+        } else {
+            const targetDashboard = role === "WHOLESALER"
+                ? "/wholesaler/dashboard"
+                : "/retailer/dashboard";
+            router.push(targetDashboard);
+        }
     }
 
     return (
