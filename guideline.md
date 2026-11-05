@@ -203,6 +203,14 @@ Tokens are declared as CSS variables under `:root` for light mode and overridden
   --muted: #f4f4f5;
   --muted-foreground: #71717a;
   --destructive: #ef4444;
+
+  /* Header & Navigation */
+  --header-background: #ffffff;
+  --header-foreground: #09090b;
+
+  /* Footer */
+  --footer-background: #fafafa;
+  --footer-foreground: #71717a;
 }
 
 /* Manual .dark Class (Toggled via ThemeToggle & persisted in localStorage) */
@@ -217,6 +225,14 @@ Tokens are declared as CSS variables under `:root` for light mode and overridden
   --muted: #27272a;
   --muted-foreground: #a1a1aa;
   --destructive: #f87171;
+
+  /* Header & Navigation */
+  --header-background: #000000;
+  --header-foreground: #fafafa;
+
+  /* Footer */
+  --footer-background: #000000;
+  --footer-foreground: #a1a1aa;
 }
 ```
 - **Dual-Trigger Logic**: If the user toggles manually (`<html class="dark">` or `<html class="light">`), the class takes precedence. If no class is set, it falls back to the visitor's OS dark/light setting.
@@ -234,10 +250,14 @@ Register CSS variables into Tailwind's utility generation engine:
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-destructive: var(--destructive);
+  --color-header: var(--header-background);
+  --color-header-foreground: var(--header-foreground);
+  --color-footer: var(--footer-background);
+  --color-footer-foreground: var(--footer-foreground);
   --font-sans: var(--font-sans);
 }
 ```
-- **Result**: Generates utility classes (`bg-background`, `text-foreground`, `bg-primary`, `border-border`) that automatically swap colors when the `.dark` class toggles without requiring React re-renders.
+- **Result**: Generates utility classes (`bg-background`, `text-foreground`, `bg-header`, `text-header-foreground`, `bg-footer`, `text-footer-foreground`) that automatically swap colors when the `.dark` class toggles without requiring React re-renders.
 
 #### 4. Zero-Blink Theme Synchronization Architecture
 - **Eliminating Hydration Pop-In**: Traditional client-only mounting patterns (e.g. `if (!mounted) return <Button className="opacity-0">`) cause a visible flicker on browser refresh while React hydrates.
@@ -317,20 +337,20 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 2. Public Site Header
 - **Location**: `src/components/layout/SiteHeader.tsx`
-- **What it does**: Public navbar containing the `DT` brand logo linking to `/`, theme toggle (`<ThemeToggle />`), a "Sign In" link to `/login`, and a "Register" button to `/registration`. Uses semantic design tokens (`border-border`, `bg-background/80`, `text-foreground`).
+- **What it does**: Public navbar containing the `DT` brand logo linking to `/`, theme toggle (`<ThemeToggle />`), a "Sign In" link to `/login`, and a "Register" button to `/registration`. Uses dedicated header design tokens (`border-border`, `bg-header/80`, `text-header-foreground`).
 - **Key Snippet**:
   ```tsx
-  <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+  <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
     <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
       <Link href="/" className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground text-xs font-black text-background">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black text-header">
           DT
         </div>
-        <span className="text-lg font-bold text-foreground">DeciTrade</span>
+        <span className="text-lg font-bold text-header-foreground">DeciTrade</span>
       </Link>
       <div className="flex items-center gap-4">
         <ThemeToggle />
-        <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">
+        <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-header-foreground">
           Sign In
         </Link>
         <Link href="/registration" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">
@@ -345,20 +365,20 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 3. Auth Header
 - **Location**: `src/components/layout/AuthHeader.tsx`
-- **What it does**: Dedicated auth navbar displaying the `DT` brand badge, theme toggle (`<ThemeToggle />`), and a "Back to Home" return link using semantic tokens.
+- **What it does**: Dedicated auth navbar displaying the `DT` brand badge, theme toggle (`<ThemeToggle />`), and a "Back to Home" return link using dedicated header tokens (`bg-header/80`, `text-header-foreground`).
 - **Key Snippet**:
   ```tsx
-  <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md">
+  <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
     <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
       <Link href="/" className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground text-xs font-black text-background">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black text-header">
           DT
         </div>
-        <span className="text-lg font-bold text-foreground">DeciTrade</span>
+        <span className="text-lg font-bold text-header-foreground">DeciTrade</span>
       </Link>
       <div className="flex items-center gap-4">
         <ThemeToggle />
-        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-header-foreground">
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Home</span>
         </Link>
@@ -371,11 +391,11 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ### 4. Footer
 - **Location**: `src/components/layout/Footer.tsx`
-- **What it does**: Global footer pinned to the bottom of the viewport displaying the dynamic copyright year and policy links.
+- **What it does**: Global footer pinned to the bottom of the viewport displaying the dynamic copyright year and policy links using dedicated footer design tokens (`bg-footer`, `text-footer-foreground`).
 - **Key Snippet**:
   ```tsx
-  <footer className="border-t border-zinc-200 dark:border-zinc-800 py-8">
-    <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500">
+  <footer className="border-t border-border bg-footer py-8">
+    <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-footer-foreground">
       <p>© {new Date().getFullYear()} DeciTrade. All rights reserved.</p>
     </div>
   </footer>

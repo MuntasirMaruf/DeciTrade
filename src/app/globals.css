@@ -7,58 +7,74 @@
 :root {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --radius: 0.5rem; /* 8px default radius */
+  --radius: 0.5rem;
 
-  /* Surface & Base */
+  /* Main Surface & Base */
   --background: #ffffff;
-  --foreground: #09090b; /* near black (zinc-950) */
+  --foreground: #09090b;
   --card: #ffffff;
   --card-foreground: #09090b;
 
-  /* Primary Interactive (CTAs, solid buttons) */
-  --primary: #18181b; /* zinc-900 */
-  --primary-foreground: #fafafa; /* zinc-50 */
+  /* Primary Interactive */
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
 
   /* Muted & Secondary Elements */
-  --muted: #f4f4f5; /* zinc-100 */
-  --muted-foreground: #71717a; /* zinc-500 */
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
 
   /* Borders & Inputs */
-  --border: #e4e4e7; /* zinc-200 */
+  --border: #e4e4e7;
   --input: #e4e4e7;
 
   /* Brand Accent & Feedback */
-  --accent: #10b981; /* emerald-500 */
+  --accent: #10b981;
   --accent-foreground: #ffffff;
-  --destructive: #ef4444; /* red-500 */
+  --destructive: #ef4444;
+
+  /* Header & Navigation */
+  --header-background: #ffffff;
+  --header-foreground: #09090b;
+
+  /* Footer */
+  --footer-background: #fafafa;
+  --footer-foreground: #71717a;
 }
 
 /* -------------------------------------------------------------------------- */
 /* Design Tokens: 2. Dark Mode (.dark class)                                  */
 /* -------------------------------------------------------------------------- */
 .dark {
-  /* Surface & Base */
-  --background: #09090b; /* zinc-950 */
-  --foreground: #fafafa; /* zinc-50 */
+  /* Main Surface & Base */
+  --background: #09090b;
+  --foreground: #fafafa;
   --card: #121215;
   --card-foreground: #fafafa;
 
-  /* Primary Interactive (Inverts to white CTA in dark mode) */
+  /* Primary Interactive */
   --primary: #fafafa;
   --primary-foreground: #18181b;
 
   /* Muted & Secondary Elements */
-  --muted: #27272a; /* zinc-800 */
-  --muted-foreground: #a1a1aa; /* zinc-400 */
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
 
   /* Borders & Inputs */
-  --border: #27272a; /* zinc-800 */
+  --border: #27272a;
   --input: #27272a;
 
   /* Brand Accent & Feedback */
   --accent: #10b981;
   --accent-foreground: #ffffff;
-  --destructive: #f87171; /* red-400 */
+  --destructive: #f87171;
+
+  /* Header & Navigation */
+  --header-background: #000000;
+  --header-foreground: #fafafa;
+
+  /* Footer */
+  --footer-background: #000000;
+  --footer-foreground: #a1a1aa;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -78,6 +94,10 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-header: var(--header-background);
+  --color-header-foreground: var(--header-foreground);
+  --color-footer: var(--footer-background);
+  --color-footer-foreground: var(--footer-foreground);
   --radius-base: var(--radius);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
