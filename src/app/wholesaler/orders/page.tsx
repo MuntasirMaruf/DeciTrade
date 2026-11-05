@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { ShoppingBag, ArrowUpRight } from "lucide-react";
+import { Suspense } from "react";
+import OrderSearch from "@/components/dashboard/OrderSearch";
+import OrderDateFilter from "@/components/dashboard/OrderDateFilter";
 
 // 1. Strict TypeScript definition for an Order record
 interface Order {
@@ -83,20 +86,41 @@ function getStatusBadge(status: Order["status"]) {
 
 // 3. Next.js 15+ Async Page Props
 interface PageProps {
-    searchParams: Promise<{ status?: string }>;
+    searchParams: Promise<{
+        status?: string;
+        query?: string;
+        date?: string;
+    }>;
 }
 
 export default async function WholesalerOrdersPage({ searchParams }: PageProps) {
-    // Await searchParams directly on the server!
-    const { status } = await searchParams;
+    // Await searchParams directly on the server
+    const { status, query, date } = await searchParams;
     const currentStatus = (status || "ALL").toUpperCase();
+    const searchQuery = (query || "").toLowerCase();
+    const filterDate = date || "";
 
-    // Server-side filtering
-    const filteredOrders =
-        currentStatus === "ALL"
-            ? MOCK_ORDERS
-            : MOCK_ORDERS.filter((order) => order.status === currentStatus);
+    // Helper to format "Nov 5, 2026" to "2026-11-05" without timezone skew
+    function formatToISODate(dateStr: string) {
+        const d = new Date(dateStr);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
 
+    // Combined Server-Side Filtering (Status + Search Query + Date)
+    const filteredOrders = MOCK_ORDERS.filter((order) => {
+        const matchesStatus =
+            currentStatus === "ALL" || order.status === currentStatus;
+        const matchesQuery =
+            !searchQuery ||
+            order.retailer.toLowerCase().includes(searchQuery) ||
+            order.id.toLowerCase().includes(searchQuery);
+        const matchesDate =
+            !filterDate || formatToISODate(order.date) === filterDate;
+        return matchesStatus && matchesQuery && matchesDate;
+    });
     return (
         <div className="mx-auto w-full max-w-6xl px-6 py-10">
             {/* Page Header */}
@@ -113,6 +137,17 @@ export default async function WholesalerOrdersPage({ searchParams }: PageProps) 
                         Track and manage wholesale orders placed by your retail network.
                     </p>
                 </div>
+            </div>
+
+            {/* Search Bar & Filter Controls */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+                <Suspense fallback={<div className="h-9 w-full max-w-sm rounded-lg bg-muted animate-pulse" />}>
+                    <OrderSearch />
+                </Suspense>
+
+                <Suspense fallback={<div className="h-9 w-44 rounded-lg bg-muted animate-pulse" />}>
+                    <OrderDateFilter />
+                </Suspense>
             </div>
 
             {/* Filter Tabs (Standard Declarative Links) */}
