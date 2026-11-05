@@ -262,6 +262,8 @@ Register CSS variables into Tailwind's utility generation engine:
 #### 4. Zero-Blink Theme Synchronization Architecture
 - **Eliminating Hydration Pop-In**: Traditional client-only mounting patterns (e.g. `if (!mounted) return <Button className="opacity-0">`) cause a visible flicker on browser refresh while React hydrates.
 - **Synchronous `<head>` Script (`src/app/layout.tsx`)**: Placing an inline `<script>` directly in `<head>` executes synchronously before the browser paints the document, attaching the `.dark` class to `<html>` prior to the first pixel render.
+- **Default Theme Resolution (First-Time Visitors)**: When a visitor has never clicked the toggle, `localStorage.theme` is empty (`!('theme' in localStorage)`). The system resolves the default dynamically from the visitor's operating system setting via `window.matchMedia('(prefers-color-scheme: dark)').matches`. If no `.dark` class is attached, `:root` in `globals.css` provides the baseline light tokens.
+- **Storage Persistence**: Theme state is written to storage only upon explicit user action inside `ThemeToggle.tsx` (`localStorage.setItem('theme', isDark ? 'dark' : 'light')`). Subsequent reloads read this key to override OS settings.
 - **`suppressHydrationWarning` on `<html>`**: Prevents Next.js console warnings when the inline script modifies `<html class="dark">` before React completes hydration.
 - **Pure CSS Icon Toggling (`ThemeToggle.tsx`)**: Both `<Moon />` (`dark:hidden`) and `<Sun />` (`hidden dark:block`) are rendered inside the button from millisecond zero. CSS toggles visibility instantly based on the presence of `.dark` without React state delays.
 
@@ -322,7 +324,15 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     <head>
       <script
         dangerouslySetInnerHTML={{
-          __html: `try{if(localStorage.theme==='dark'||(!('theme' in localStorage)&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark')}else{document.documentElement.classList.remove('dark')}}catch(_){}`,
+          __html: `
+            try {
+              if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+            } catch (_) {}
+          `,
         }}
       />
     </head>
