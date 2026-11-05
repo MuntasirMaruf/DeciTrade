@@ -1,4 +1,5 @@
 import Header from "@/components/layout/Header";
+import WholesalerSidebar from "@/components/layout/WholesaserSidebar";
 
 export default function WholesalerLayout({
     children,
@@ -6,11 +7,17 @@ export default function WholesalerLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="flex flex-1 flex-col">
+        <div className="flex h-screen flex-col overflow-hidden">
+            {/* Header locked at the top */}
             <Header />
-            <div className="flex flex-1 flex-col bg-neutral-50 dark:bg-black">
-                {/* Wholesaler child pages (Dashboard, Orders, Inventory, etc.) */}
-                <div className="flex-1">{children}</div>
+            {/* Portal Body Shell (fills remaining screen height) */}
+            <div className="flex flex-1 overflow-hidden bg-neutral-50 dark:bg-black">
+                {/* Sidebar: fills height, cannot scroll with page */}
+                <WholesalerSidebar />
+                {/* Content Area: ONLY this container scrolls */}
+                <div className="flex-1 h-full overflow-y-auto min-w-0">
+                    {children}
+                </div>
             </div>
         </div>
     );

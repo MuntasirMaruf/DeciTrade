@@ -36,10 +36,14 @@ deci-trade/
 │   │   │   └── dashboard/
 │   │   │       └── page.tsx    # Route: /retailer/dashboard (RSC Retailer metrics)
 │   │   ├── wholesaler/     # Wholesaler portal routes
-│   │   │   ├── layout.tsx      # Nested layout: renders Header + portal shell
+│   │   │   ├── layout.tsx      # Nested layout: renders Header + WholesalerSidebar + portal shell
 │   │   │   ├── page.tsx        # Route: /wholesaler (Server redirect to /wholesaler/dashboard)
-│   │   │   └── dashboard/
-│   │   │       └── page.tsx    # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
+│   │   │   ├── dashboard/
+│   │   │   │   └── page.tsx    # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
+│   │   │   ├── orders/
+│   │   │   │   └── page.tsx    # Route: /wholesaler/orders (Incoming retailer orders)
+│   │   │   └── inventory/
+│   │   │       └── page.tsx    # Route: /wholesaler/inventory (Warehouse catalog & stock)
 │   │   ├── favicon.ico
 │   │   ├── globals.css     # Global styles & Tailwind configuration
 │   │   ├── layout.tsx      # Root layout: <main> + Footer
@@ -50,6 +54,8 @@ deci-trade/
 │   │   ├── layout/         # Persistent structural components
 │   │   │   ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
 │   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
+│   │   │   ├── Header.tsx      # Authenticated portal navbar with profile, role pill & sign out
+│   │   │   ├── WholesalerSidebar.tsx # Pinned navigation sidebar with route-aware active state
 │   │   │   └── Footer.tsx      # Global footer with dynamic year & links
 │   │   └── ui/             # Reusable design system primitives
 │   │       ├── Button.tsx      # Reusable button with variants and loading state
@@ -330,11 +336,284 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
+### K. URL State & Educational Prototyping vs. Production Cookie Sessions
+
+In web applications, managing state across pages can be accomplished through URL parameters or secure session storage.
+
+#### 1. Prototyping Dynamic State via Query Parameters
+During early development and educational prototyping, passing user identity through query parameters (e.g., `router.push(`/${targetPortal}/dashboard?email=${encodeURIComponent(email)}`)`):
+- Eliminates dependencies on external authentication services, databases, or local storage.
+- Enables instant data-flow verification between distinct pages and layouts.
+- Preserves a pure client-side mental model before introducing asynchronous auth lifecycles.
+
+#### 2. Production Security & PII Rules (Why Query Parameters Are Unsafe in Production)
+Passing Personally Identifiable Information (PII) such as email addresses in the URL is strictly prohibited in production systems due to four primary security vulnerabilities:
+1. **Browser History & Bookmarking**: URLs containing email addresses are permanently stored in browser history, visible to shared machine users, and exposed in bookmarks.
+2. **Server Access Logs**: Reverse proxies (Nginx, Cloudflare), load balancers, and web servers log full request URIs by default. PII enters plain-text access logs, creating compliance violations under privacy regulations (e.g., GDPR, CCPA).
+3. **HTTP Referer Header Leaks**: If the dashboard loads third-party external resources (analytics, fonts, scripts, CDNs) or the user clicks an external link, the browser transmits the current URL containing the user's email in the `Referer` request header.
+4. **Tampering & Identity Spoofing**: Query parameters are unauthenticated and unencrypted. Any user can modify `?email=admin@decitrade.com` in their address bar to spoof another user unless cryptographic session tokens are verified server-side.
+
+#### 3. Production Standard: Secure Cookie-Based Sessions
+In production, authentication and authorization are managed through secure session cookies:
+- **`HttpOnly` Flag**: Prevents client-side JavaScript (`document.cookie`) from reading the session token, protecting against Cross-Site Scripting (XSS) token theft.
+- **`Secure` Flag**: Ensures cookies are transmitted exclusively over encrypted HTTPS connections.
+- **`SameSite=Lax` or `Strict`**: Protects against Cross-Site Request Forgery (CSRF) attacks.
+- **Server-Side Verification**: Authentication providers (e.g. Supabase Auth SSR) issue signed cryptographic tokens (JWTs) stored in cookies and validated on each request via Next.js Middleware or React Server Components before rendering protected views.
+
+---
+
+### L. React `<Suspense>` Architecture & Next.js Streaming Boundaries
+
+React `<Suspense>` is a first-class component primitive (`import { Suspense } from "react"`) that lets components express declarative loading states while waiting for asynchronous operations.
+
+#### 1. What is `<Suspense>`?
+`<Suspense>` is a declarative boundary in the component tree that orchestrates asynchronous tasks—such as data fetching, code-splitting, dynamic imports, and client-side hooks like `useSearchParams()`. Rather than handling loading spinners inside individual components with manual boolean flags (`isLoading`), `<Suspense>` coordinates UI states at the boundary level.
+
+#### 2. What Does It Do?
+- **Catches Suspensions**: When a child component triggers an asynchronous operation (or signals that it depends on client-only parameters during SSR), it "suspends" execution.
+- **Renders Fallback UI**: React catches the suspension and displays the declared `fallback` prop (such as a skeleton placeholder) without crashing or freezing the UI.
+- **Resumes Rendering**: As soon as the asynchronous dependency resolves (data is fetched or hydration completes), React seamlessly replaces the fallback with the fully rendered child component.
+
+#### 3. Why Use `<Suspense>`?
+1. **Streaming Server-Side Rendering (SSR)**: In Next.js App Router, `<Suspense>` enables progressive HTML streaming. The server immediately sends the fast static shell (headers, sidebars) to the browser, while slower components stream in chunks as their data resolves.
+2. **Prevents Full-Page De-Optimization**: Hooks like `useSearchParams()` read dynamic client-side query strings. Without a `<Suspense>` boundary, Next.js cannot statically prerender the page and is forced to de-opt the *entire route* to client-only rendering. `<Suspense>` confines dynamic behavior to that isolated slot.
+3. **Eliminates Manual Loading State Boilerplate**: Replaces repetitive `const [isLoading, setIsLoading] = useState(true)` and ternary checks (`isLoading ? <Spinner /> : <Content />`) with a centralized architectural boundary.
+4. **Prevents Layout Shift (CLS)**: Pairing `<Suspense>` with dimension-matched skeleton fallbacks reserves exact screen real estate, preventing page jumping when data arrives.
+
+#### 4. When to Use `<Suspense>`?
+- **Client Components with `useSearchParams()`**: Any Client Component accessing URL search parameters inside pages or persistent layouts that are statically generated or server-rendered.
+- **Async React Server Components (RSC Data Fetching)**: When Server Components fetch data directly from a database or external API (`async function OrderFeed() { const orders = await db... }`).
+- **Code-Splitting & Dynamic Imports**: When loading heavy client libraries or components on demand via `React.lazy` or `next/dynamic` (e.g. complex charting libraries, rich text editors).
+- **Parallel Asynchronous Slots**: When independent dashboard widgets have varying latency (e.g. instant user profile vs. slow analytics table).
+
+#### 5. How to Use `<Suspense>`
+
+##### A. Component Separation Rule (Boundary Placement)
+A component **cannot catch its own suspension**. The `<Suspense>` wrapper must always be placed in a **parent component** above the suspending child:
+
+```tsx
+// ❌ WRONG: Component cannot suspend itself and catch its own fallback
+export default function OrdersFilter() {
+  const searchParams = useSearchParams(); // Suspends here!
+  return (
+    <Suspense fallback={<Skeleton />}>
+      <div>Filter: {searchParams.get("status")}</div>
+    </Suspense>
+  );
+}
+
+// ✅ CORRECT: Parent declares boundary; child performs the suspending read
+function StatusFilterNav() {
+  const searchParams = useSearchParams();
+  const currentStatus = searchParams.get("status") || "all";
+  return <span>Active filter: {currentStatus}</span>;
+}
+
+export default function OrdersPage() {
+  return (
+    <section>
+      <h1>Orders</h1>
+      <Suspense fallback={<div className="h-8 w-48 bg-muted/40 rounded animate-pulse" />}>
+        <StatusFilterNav />
+      </Suspense>
+    </section>
+  );
+}
+```
+
+---
+
+### M. Client-Side URL Query Inspection (`useSearchParams()`)
+
+`useSearchParams` is a Next.js App Router Client Component hook (`import { useSearchParams } from "next/navigation"`) that reads the current URL's query string parameters.
+
+#### 1. What is `useSearchParams()`?
+- Returns a **read-only** Web API `URLSearchParams` interface representing the query string of the current URL (e.g. `?status=pending&search=grain`).
+- It is reactive: when the query string changes via `router.push()` or `<Link>`, the component automatically re-renders with the latest values.
+
+#### 2. Key Methods of `URLSearchParams`:
+- `searchParams.get(name)`: Returns the first string value associated with the given key, or `null` if the parameter does not exist.
+- `searchParams.has(name)`: Returns a boolean indicating whether the specified parameter key exists in the URL.
+- `searchParams.getAll(name)`: Returns an array of all values associated with the given parameter (for multi-value keys like `?filter=a&filter=b`).
+
+#### 3. Canonical Production Role: Table Filters, Search & Pagination
+In B2B trading platforms, `useSearchParams()` powers shareable, bookmarkable UI state across data tables and catalog grids:
+```tsx
+function OrdersTableFilter() {
+  const searchParams = useSearchParams();
+  const currentStatus = searchParams.get("status") || "all";
+
+  // Filter orders based on URL query parameter
+  const filteredOrders = orders.filter((order) =>
+    currentStatus === "all" ? true : order.status === currentStatus
+  );
+
+  return (
+    <div className="flex gap-2">
+      <Link href="/wholesaler/orders?status=all">All</Link>
+      <Link href="/wholesaler/orders?status=pending">Pending</Link>
+      <Link href="/wholesaler/orders?status=shipped">Shipped</Link>
+    </div>
+  );
+}
+```
+- **Architectural Constraint**: Any component calling `useSearchParams()` must be wrapped inside a `<Suspense>` boundary to preserve static prerendering across the outer layout shell.
+
+---
+
+### N. Active Route Detection in Sidebars (`usePathname()`)
+
+`usePathname` is a Next.js App Router Client Component hook (`import { usePathname } from "next/navigation"`) that returns the path portion of the current URL.
+
+#### 1. What is `usePathname()`?
+- Returns a plain string containing the current URL's pathname (e.g., `"/wholesaler/dashboard"` or `"/wholesaler/orders"`).
+- **Does not include**: Protocol (`https://`), host domain (`localhost:3000`), port, query strings (`?status=...`), or hash fragments (`#top`).
+- Unlike the raw browser API `window.location.pathname`, `usePathname()` is React-aware, updates synchronously on client-side route transitions, and avoids SSR hydration mismatches.
+
+#### 2. Comparison: `usePathname()` vs. `useSearchParams()`
+
+| Feature | `usePathname()` | `useSearchParams()` |
+| :--- | :--- | :--- |
+| **URL Target** | Path only (`/wholesaler/orders`) | Query string only (`?status=pending`) |
+| **Return Type** | Plain `string` | Read-only `URLSearchParams` object |
+| **Access Method** | Direct string comparisons (`pathname === item.href`) | Getter methods (`.get("status")`) |
+| **Suspense Requirement** | No `<Suspense>` required | `<Suspense>` boundary required |
+| **Primary DeciTrade Role** | Active navigation link highlighting in Sidebars | Table filtering, search, and pagination |
+
+#### 3. Canonical Production Role: Sidebar Active Link Highlighting
+In [`src/components/layout/WholesalerSidebar.tsx`](src/components/layout/WholesalerSidebar.tsx), `usePathname()` determines which sidebar navigation link is currently active:
+```tsx
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+export default function WholesalerSidebar() {
+  const pathname = usePathname();
+
+  return (
+    <nav className="space-y-1">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        // Compare current pathname to the link's target href
+        const isActive = pathname === item.href;
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isActive
+                ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted"
+            }`}
+          >
+            <Icon className="w-4 h-4 shrink-0" />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+```
+- **How It Works**: When the user clicks from "Dashboard" (`/wholesaler/dashboard`) to "Orders" (`/wholesaler/orders`), Next.js performs a client-side navigation. `usePathname()` instantly updates from `"/wholesaler/dashboard"` to `"/wholesaler/orders"`, causing the sidebar to re-render and move the active background pill seamlessly.
+
+---
+
+### O. Dashboard App Shell Architecture (Viewport-Locked Layout vs. Window Scroll)
+
+In production SaaS and B2B platforms (e.g., Stripe, Linear, Shopify, DeciTrade), dashboard navigation follows the **Viewport-Locked App Shell** architecture.
+
+#### 1. The Industry Standard: Viewport-Locked App Shell (`h-screen overflow-hidden`)
+In modern web applications, the browser window itself (`window.scrollY`) **never scrolls**. Instead, the entire dashboard is constrained to the exact viewport height (`h-screen` or `100dvh`), and scrolling is confined to the content area.
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ Header (h-16 shrink-0 border-b border-border)              │
+├───────────────────┬─────────────────────────────────────────┤
+│ Sidebar           │ Main Content Area                       │
+│ (w-64 shrink-0    │ (flex-1 h-full                          │
+│  h-full           │  overflow-y-auto                        │
+│  overflow-y-auto) │  min-w-0)                               │
+│                   │                                         │
+│ [Dashboard]       │  ┌────────────────────────────────────┐ │
+│ [Orders]          │  │ Metric Cards (StatCards)           │ │
+│ [Inventory]       │  └────────────────────────────────────┘ │
+│                   │  ┌────────────────────────────────────┐ │
+│                   │  │ Orders Data Table (500 rows)       │ │
+│                   │  │ ...                                │ │
+│                   │  │ ... (Only this column scrolls!)    │ │
+│                   │  └────────────────────────────────────┘ │
+└───────────────────┴─────────────────────────────────────────┘
+```
+
+##### Why This Architecture Is the Industry Standard:
+1. **Zero Window-Scroll**: The browser window has no global scrollbar. Rolling the mouse wheel over the dashboard scrolls only the content panel.
+2. **Fixed Sidebar Without Sticky Fragility**: CSS `position: sticky` can fail when parent flex containers stretch or when body margins shift. In a viewport-locked shell, the sidebar does not rely on `sticky`—it simply occupies `h-full` within a fixed flex container. It **physically cannot move**.
+3. **Independent Sidebar Scroll**: If a sidebar contains 20+ navigation links or is viewed on a small laptop display (13-inch), the sidebar scrolls within its own column (`overflow-y-auto`) without moving the page.
+4. **Isolated Scrollbars**: Scrollbars appear directly along the right edge of the content panel, mimicking native desktop applications.
+
+##### Implementation Pattern:
+```tsx
+// Portal Layout (src/app/wholesaler/layout.tsx)
+export default function WholesalerLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex h-screen flex-col overflow-hidden">
+      {/* 1. Header locked at top */}
+      <Header />
+
+      {/* 2. Portal Body Shell locked to remaining height */}
+      <div className="flex flex-1 overflow-hidden bg-neutral-50 dark:bg-black">
+        {/* 3. Left Sidebar: fills height, cannot scroll with page */}
+        <WholesalerSidebar />
+
+        {/* 4. Content Panel: the SOLE scrolling container */}
+        <div className="flex-1 h-full overflow-y-auto min-w-0">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+---
+
+#### 2. Footer Placement: Pure Server Component on Public Pages
+In Next.js App Router, placing a marketing footer inside root `src/app/layout.tsx` forces an 80px footer onto every route in the application—including dashboards. When a dashboard is locked to `h-screen`, this causes the browser window to gain an unwanted vertical scrollbar.
+
+##### The Industry Standard Solution (Pure RSC):
+Do **not** add `"use client"` or path-checking hooks to `Footer.tsx`. Instead, keep `Footer.tsx` as a pure React Server Component:
+1. **Omit `<Footer />` from root `src/app/layout.tsx`**.
+2. **Render `<Footer />` directly on public marketing pages** (such as `src/app/page.tsx`) and auth pages (`src/app/(auth)/layout.tsx`) where marketing navigation belongs.
+3. **Portal layouts (`src/app/wholesaler/layout.tsx`) render only the dashboard app shell** without any marketing footer.
+
+##### Result:
+- `Footer.tsx` remains a 100% React Server Component with zero client JavaScript overhead.
+- Portals have zero window scrollbar.
+- The sidebar stays completely stationary.
+
+---
+
+#### Summary Comparison:
+
+| Feature | Viewport-Locked App Shell (Industry Standard) | Window-Level Sticky Scroll |
+| :--- | :--- | :--- |
+| **Outer Shell** | `h-screen flex flex-col overflow-hidden` | `min-h-screen flex flex-col` |
+| **Window Scrollbar** | None (window never scrolls) | Yes (browser window scrolls) |
+| **Sidebar Behavior** | Fixed `h-full`, completely stationary | `sticky top-16`, subject to parent height constraints |
+| **Content Area** | `flex-1 h-full overflow-y-auto` (sole scroll container) | `flex-1 min-w-0` (scrolls with window) |
+| **Marketing Footer** | Placed only on public routes (`page.tsx`), pure RSC | Rendered globally in root layout |
+| **Best For** | Professional SaaS, B2B dashboards, data portals | Marketing pages, blogs, documentation sites |
+
+---
+
 ## 4. File Locations, Responsibilities & Snippets
 
 ### 1. Root Layout
 - **Location**: `src/app/layout.tsx`
-- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), executes early synchronous theme determination in `<head>` to prevent FOUC, and establishes the sticky-footer shell with `<main>` and `<Footer />`.
+- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), executes early synchronous theme determination in `<head>` to prevent FOUC, and establishes the application shell with `<main className="flex flex-1 flex-col">`.
 - **Key Snippet**:
   ```tsx
   <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
@@ -355,7 +634,6 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
     </head>
     <body className="min-h-full flex flex-col">
       <main className="flex flex-1 flex-col">{children}</main>
-      <Footer />
     </body>
   </html>
   ```
@@ -416,21 +694,97 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 4. Footer
-- **Location**: `src/components/layout/Footer.tsx`
-- **What it does**: Global footer pinned to the bottom of the viewport displaying the dynamic copyright year and policy links using dedicated footer design tokens (`bg-footer`, `text-footer-foreground`).
+### 4. Authenticated Portal Header
+- **Location**: `src/components/layout/Header.tsx`
+- **What it does**: Persistent navbar for authenticated portal layouts. Renders brand logo linking to `/`, theme toggle (`<ThemeToggle />`), and user greeting/profile indicators as a clean React Server Component.
 - **Key Snippet**:
   ```tsx
-  <footer className="border-t border-border bg-footer py-8">
-    <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-footer-foreground">
-      <p>© {new Date().getFullYear()} DeciTrade. All rights reserved.</p>
-    </div>
-  </footer>
+  import Link from "next/link";
+  import ThemeToggle from "@/components/ui/ThemeToggle";
+
+  export default function Header() {
+    return (
+      <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black text-header">
+              DT
+            </div>
+            <span className="text-lg font-bold text-header-foreground">DeciTrade</span>
+          </Link>
+          <div className="flex items-center gap-4">
+            <ThemeToggle />
+            <p>Hi John!</p>
+          </div>
+        </div>
+      </header>
+    );
+  }
   ```
 
 ---
 
-### 5. Homepage
+### 5. Wholesaler Sidebar
+- **Location**: `src/components/layout/WholesalerSidebar.tsx`
+- **What it does**: Fixed navigation sidebar for the Wholesaler portal within the viewport-locked app shell. Uses `usePathname()` to detect active routes and highlight navigation links (`Dashboard`, `Orders`, `Inventory`). Occupies the full height of the body container (`w-64 shrink-0 h-full`) with internal scrolling (`overflow-y-auto`) so menu items remain reachable on short displays without moving the page.
+- **Key Snippet**:
+  ```tsx
+  "use client";
+
+  import Link from "next/link";
+  import { usePathname } from "next/navigation";
+
+  export default function WholesalerSidebar() {
+    const pathname = usePathname();
+
+    return (
+      <aside className="w-64 shrink-0 h-full border-r border-border bg-card overflow-y-auto flex flex-col justify-between">
+        <nav className="p-4 space-y-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground font-semibold shadow-xs"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </aside>
+    );
+  }
+  ```
+
+---
+
+### 6. Footer
+- **Location**: `src/components/layout/Footer.tsx`
+- **What it does**: Pure React Server Component displaying copyright, terms, privacy, and support links. Rendered on public marketing pages (`src/app/page.tsx`), omitted from portal layouts to maintain the clean app shell.
+- **Key Snippet**:
+  ```tsx
+  export default function Footer() {
+    return (
+      <footer className="border-t border-zinc-200 bg-white dark:border-zinc-800 dark:bg-black py-8">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-zinc-500 dark:text-zinc-400">
+          <p>© {new Date().getFullYear()} DeciTrade. All rights reserved.</p>
+        </div>
+      </footer>
+    );
+  }
+  ```
+
+---
+
+### 7. Homepage
 - **Location**: `src/app/page.tsx`
 - **What it does**: The public landing page displaying `SiteHeader` and the hero section with platform headlines and call-to-action buttons.
 - **Key Snippet**:
@@ -451,7 +805,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 6. Authentication Nested Layout
+### 8. Authentication Nested Layout
 - **Location**: `src/app/(auth)/layout.tsx`
 - **What it does**: A layout wrapper dedicated to authentication screens. It renders the `AuthHeader` at the top and centers form cards horizontally and vertically.
 - **Key Snippet**:
@@ -472,7 +826,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 7. Validation Utilities
+### 9. Validation Utilities
 - **Location**: `src/lib/validator.ts`
 - **What it does**: Exports reusable regular expressions for client-side form validation.
 - **Key Snippet**:
@@ -484,28 +838,31 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 8. Login Page
+### 10. Login Page
 - **Location**: `src/app/(auth)/login/page.tsx`
 - **What it does**:
   - Sign-in form with client-side email and password validation.
+  - Role selection tabs (`WHOLESALER` vs. `RETAILER`) driven by local `useState`.
   - Password visibility toggle (`Eye` / `EyeOff`) driven by local `useState`.
   - Disables default browser popups using `noValidate`.
-  - Automatically redirects to `/wholesaler/dashboard` via `useRouter().push()` upon successful submission.
+  - Programmatically redirects to the selected portal (`/${targetPortal}/dashboard`) via `useRouter().push()`.
 - **Key Snippet**:
   ```tsx
   const router = useRouter();
+  const [selectedRole, setSelectedRole] = useState<"WHOLESALER" | "RETAILER">("WHOLESALER");
 
   async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
-    // Validate email & password...
+    // Validate credentials...
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    router.push("/wholesaler/dashboard");
+    const targetPortal = selectedRole.toLowerCase();
+    router.push(`/${targetPortal}/dashboard`);
   }
   ```
 
 ---
 
-### 9. Registration Page
+### 11. Registration Page
 - **Location**: `src/app/(auth)/registration/page.tsx`
 - **What it does**:
   - Account creation with business type selection tabs (Wholesaler vs. Retailer).
@@ -521,7 +878,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 10. Onboarding Page (2-Step Funnel)
+### 12. Onboarding Page (2-Step Funnel)
 - **Location**: `src/app/(auth)/onboarding/page.tsx`
 - **What it does**:
   - Step 2 in funnel: "Business Setup" with 2-step progress stepper (`1. Account Created` &rarr; `2. Business Setup`).
@@ -539,7 +896,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 11. Reusable StatCard Component
+### 13. Reusable StatCard Component
 - **Location**: `src/components/dashboard/StateCard.tsx`
 - **What it does**: Reusable metrics card accepting TypeScript props (`title`, `value`, `change`, `icon`). Uses `{ icon: Icon }` destructuring aliasing to render dynamic Lucide icon components with capitalized JSX syntax (`<Icon className="w-4 h-4" />`).
 - **Key Snippet**:
@@ -569,19 +926,21 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 12. Wholesaler Portal Layout
+### 14. Wholesaler Portal Layout
 - **Location**: `src/app/wholesaler/layout.tsx`
-- **What it does**: Nested portal layout shell for all `/wholesaler/*` routes. Renders the shared logged-in `<Header />` at the top and wraps all child routes in a full-height container.
+- **What it does**: Nested portal layout shell for all `/wholesaler/*` routes implementing the industry-standard viewport-locked app shell (`h-screen overflow-hidden`). Pins the `<Header />` at the top, fixes `<WholesalerSidebar />` on the left, and confines scrolling strictly to the right-hand content panel (`flex-1 h-full overflow-y-auto`).
 - **Key Snippet**:
   ```tsx
   import Header from "@/components/layout/Header";
+  import WholesalerSidebar from "@/components/layout/WholesalerSidebar";
 
   export default function WholesalerLayout({ children }: { children: React.ReactNode }) {
     return (
-      <div className="flex flex-1 flex-col">
+      <div className="flex h-screen flex-col overflow-hidden">
         <Header />
-        <div className="flex flex-1 flex-col bg-neutral-50 dark:bg-black">
-          <div className="flex-1">{children}</div>
+        <div className="flex flex-1 overflow-hidden bg-neutral-50 dark:bg-black">
+          <WholesalerSidebar />
+          <div className="flex-1 h-full overflow-y-auto min-w-0">{children}</div>
         </div>
       </div>
     );
@@ -590,7 +949,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 13. Wholesaler Root Redirection Page
+### 15. Wholesaler Root Redirection Page
 - **Location**: `src/app/wholesaler/page.tsx`
 - **What it does**: React Server Component route handler at `/wholesaler` that immediately forwards incoming traffic to `/wholesaler/dashboard` via Next.js server-side `redirect()`.
 - **Key Snippet**:
@@ -604,12 +963,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 14. Wholesaler Dashboard Page
+### 16. Wholesaler Dashboard Page
 - **Location**: `src/app/wholesaler/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for wholesalers that renders the metrics grid using the reusable `<StatCard />` component.
 - **Key Snippet**:
   ```tsx
-  import StatCard from "@/components/dashboard/StatCard";
+  import StatCard from "@/components/dashboard/StateCard";
 
   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
     {stats.map((stat) => (
@@ -626,7 +985,41 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 15. Retailer Portal Layout
+### 17. Wholesaler Orders Page
+- **Location**: `src/app/wholesaler/orders/page.tsx`
+- **What it does**: Order management dashboard for wholesalers to track incoming retailer orders.
+- **Key Snippet**:
+  ```tsx
+  export default function WholesalerOrdersPage() {
+    return (
+      <div className="p-8">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Orders</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage and track incoming retailer orders.</p>
+      </div>
+    );
+  }
+  ```
+
+---
+
+### 18. Wholesaler Inventory Page
+- **Location**: `src/app/wholesaler/inventory/page.tsx`
+- **What it does**: Warehouse inventory and catalog page for wholesalers to manage product listings and stock.
+- **Key Snippet**:
+  ```tsx
+  export default function WholesalerInventoryPage() {
+    return (
+      <div className="p-8">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Inventory</h1>
+        <p className="text-sm text-muted-foreground mt-1">View and manage warehouse stock and catalog items.</p>
+      </div>
+    );
+  }
+  ```
+
+---
+
+### 19. Retailer Portal Layout
 - **Location**: `src/app/retailer/layout.tsx`
 - **What it does**: Nested portal layout shell for all `/retailer/*` routes. Renders the shared logged-in `<Header />` at the top and wraps all child routes in a full-height container.
 - **Key Snippet**:
@@ -647,7 +1040,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 16. Retailer Root Redirection Page
+### 20. Retailer Root Redirection Page
 - **Location**: `src/app/retailer/page.tsx`
 - **What it does**: React Server Component route handler at `/retailer` that immediately forwards incoming traffic to `/retailer/dashboard` via Next.js server-side `redirect()`.
 - **Key Snippet**:
@@ -661,12 +1054,12 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 17. Retailer Dashboard Page
+### 21. Retailer Dashboard Page
 - **Location**: `src/app/retailer/dashboard/page.tsx`
 - **What it does**: A React Server Component portal for retailers that renders retail-specific metrics (`Active Deliveries`, `Connected Wholesalers`, `Monthly Procurement`) using the reusable `<StatCard />` component.
 - **Key Snippet**:
   ```tsx
-  import StatCard from "@/components/dashboard/StatCard";
+  import StatCard from "@/components/dashboard/StateCard";
 
   <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
     {stats.map((stat) => (
@@ -683,7 +1076,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 18. Reusable Button Component
+### 22. Reusable Button Component
 - **Location**: `src/components/ui/Button.tsx`
 - **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
 - **Key Snippet**:
@@ -743,7 +1136,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 19. Theme Toggle Component
+### 23. Theme Toggle Component
 - **Location**: `src/components/ui/ThemeToggle.tsx`
 - **What it does**: Client Component that toggles the `.dark` class on `document.documentElement` (`<html>`), persists user choice in `localStorage`, and uses pure CSS toggling (`dark:hidden` / `hidden dark:block`) to eliminate hydration delays and icon pop-in.
 - **Key Snippet**:

@@ -1,3 +1,4 @@
+import Footer from "@/components/layout/Footer";
 import SiteHeader from "@/components/layout/SiteHeader";
 
 export default function Home() {
@@ -22,6 +23,8 @@ export default function Home() {
           </button>
         </div>
       </section>
+
+      <Footer />
     </div>
   );
 }
