@@ -69,7 +69,7 @@ deci-trade/
 │   ├── utils/              # Third-party SDK & client initializations
 │   │   └── supabase/
 │   │       ├── client.ts   # Browser Client for Client Components (@supabase/ssr)
-│   │       ├── middleware.ts # Session refresh & cookie synchronization helper (@supabase/ssr)
+│   │       ├── proxy.ts    # Session refresh & cookie synchronization helper (@supabase/ssr)
 │   │       └── server.ts   # Server Client for Server Components & Actions (@supabase/ssr)
 │   └── proxy.ts            # Next.js 16 Proxy route guard & session updater (replaces deprecated middleware.ts)
 ├── b2b_wholesale_architecture_plan.md # Architectural blueprint & hybrid pattern specification
@@ -847,6 +847,8 @@ The user access and onboarding workflow spans 5 coordinated phases across the br
    │
    ▼
 3. Onboarding (/onboarding — Step 2 Business Setup)
+   └─ Server Component checks DB: if already completed -> HTTP 307 redirect to dashboard (zero flash)
+   └─ If not completed: renders colocated OnboardingForm for business setup
    └─ User completes role-specific fields (warehouse_address or delivery_address, licenses)
    └─ Updates public.wholesalers or public.retailers where id = auth.uid()
    │
@@ -904,8 +906,8 @@ The registration pipeline executes across 4 sequential stages spanning the brows
 [ Return Trip & Client Session Hydration ]
  14. GoTrue returns HTTP 200 OK with User object, access_token (JWT), and refresh_token
  15. @supabase/ssr browser client writes session cookie (document.cookie)
- 16. React 19 updates state: setIsLoading(false) -> setIsSuccess(true)
- 17. UI unmounts form and renders success card with CTA linking to /onboarding
+ 16. React 19 updates state: setIsLoading(false)
+ 17. Programmatically redirects via router.push(targetDashboard) based on selectedRole
 ```
 
 ##### Stage 1: Browser Dispatch & Payload Construction
@@ -946,8 +948,8 @@ When the user clicks "Create account" in `src/app/(auth)/registration/page.tsx`:
 ##### Stage 4: Response, Session Storage & Next.js UI Transition
 1. Supabase GoTrue returns an HTTP 200 OK response containing the newly created `User` record alongside an `access_token` (JWT) and a `refresh_token`.
 2. `@supabase/ssr` (`createBrowserClient`) writes the session tokens into browser storage (`document.cookie`), ensuring future requests from Next.js Server Components and Server Actions receive the session via `cookies()`.
-3. React 19 handles the asynchronous return: `setIsLoading(false)` and `setIsSuccess(true)`.
-4. The registration form unmounts, and the page renders the green success card directing the user to Step 2 (`/onboarding`).
+3. React 19 updates submission state: `setIsLoading(false)`.
+4. Evaluates `selectedRole` and dynamically redirects via `router.push(targetDashboard)`.
 
 ##### Deep Dive: The Supabase Session Cookie Architecture (`sb-<project-ref>-auth-token`)
 
@@ -1219,7 +1221,7 @@ The platform schema (`supabase_schema.sql`) organizes data into 6 relational dom
 4. **Orders & Negotiation**: `orders` (with permanent `shipping_address_snapshot`), `order_items` (supporting the line-item counter-offer model: `requested_quantity` vs. `confirmed_quantity`), `invoices`, `order_status_history`.
 5. **Notifications**: `notifications` (system signals, connection status alerts, invoice updates).
 
-#### 5. Hybrid CQRS Architecture (Reads via Supabase BFF, Mutations via NestJS)
+#### 6. Hybrid CQRS Architecture (Reads via Supabase BFF, Mutations via NestJS)
 DeciTrade follows the **CQRS + BFF Pattern** (Command Query Responsibility Segregation with a Backend-for-Frontend):
 1. **The Read Path (Instant, Streaming UI)**:
    - Next.js Server Components query Supabase directly via `@supabase/ssr` using the authenticated user's session cookie.
@@ -1231,7 +1233,7 @@ DeciTrade follows the **CQRS + BFF Pattern** (Command Query Responsibility Segre
 3. **Child Table RLS Policies**:
    - To support nested joins (e.g. `.select('*, order_items(*)')`), PostgreSQL RLS is enabled on both parent and child tables (`orders`, `order_items`, `order_status_history`, `kyc_documents`, `categories`), enforcing participant checks (`wholesaler_id = auth.uid() OR retailer_id = auth.uid()`).
 
-#### 6. Deep-Dive Reanalysis: The Dual-Client Architecture (`client.ts` vs. `server.ts`)
+#### 7. Deep-Dive Reanalysis: The Dual-Client Architecture (`client.ts` vs. `server.ts`)
 
 In Next.js App Router, code executes across two fundamentally isolated runtimes:
 1. **The Browser Environment (Client Runtime)**: Client Components marked with `"use client"`, where React state, event handlers, and browser APIs (`document.cookie`, `window`) exist.
@@ -1520,21 +1522,20 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 - **Location**: `src/app/(auth)/login/page.tsx`
 - **What it does**:
   - Sign-in form with client-side email and password validation.
-  - Role selection tabs (`WHOLESALER` vs. `RETAILER`) driven by local `useState`.
   - Password visibility toggle (`Eye` / `EyeOff`) driven by local `useState`.
   - Disables default browser popups using `noValidate`.
-  - Programmatically redirects to the selected portal (`/${targetPortal}/dashboard`) via `useRouter().push()`.
+  - Dispatches credentials on submit and routes dynamically to the portal dashboard.
 - **Key Snippet**:
   ```tsx
   const router = useRouter();
-  const [selectedRole, setSelectedRole] = useState<"WHOLESALER" | "RETAILER">("WHOLESALER");
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     // Validate credentials...
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    const targetPortal = selectedRole.toLowerCase();
-    router.push(`/${targetPortal}/dashboard`);
+    router.push("/wholesaler/dashboard");
+    // Live Supabase integration: supabase.auth.signInWithPassword()
   }
   ```
 
@@ -1546,7 +1547,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
   - Account creation with business type selection tabs (Wholesaler vs. Retailer).
   - Validates `business_name`, `phone_number` (`PHONE_REGEX`), `email` (`EMAIL_REGEX`), and `password` (`PASSWORD_REGEX`).
   - Calls client-side `supabase.auth.signUp()` passing user metadata (`role`, `business_name`, `phone_number`), triggering the PostgreSQL `handle_new_user()` trigger for automated profile and domain entity provisioning.
-  - Displays error banners on auth failure and a success card directing to Step 2 (`/onboarding`).
+  - Displays error banners on auth failure and dynamically redirects to the respective portal dashboard (`/wholesaler/dashboard` or `/retailer/dashboard`) on success.
   - **Dev Setup Requirement**: Supabase project setting must have "Confirm email" toggled **OFF** (`Authentication` &rarr; `Sign In / Providers` &rarr; `Email`) during local development so accounts are immediately active without an external SMTP server.
 - **Key Snippet**:
   ```tsx
@@ -2021,7 +2022,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
             type="date"
             value={currentDate}
             onChange={(e) => handleDateChange(e.target.value)}
-            className="pl-9 pr-8 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+            className="pl-9 pr-8 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all dark:scheme-dark [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
           />
           <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
