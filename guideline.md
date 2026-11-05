@@ -50,8 +50,9 @@ deci-trade/
 │   │   └── page.tsx        # Homepage route: / (renders SiteHeader + Hero)
 │   ├── components/         # Reusable React components
 │   │   ├── dashboard/      # Portal & analytics components
-│   │   │   ├── StateCard.tsx   # Reusable metric card with TypeScript props
-│   │   │   └── OrderSearch.tsx # Leaf Client Component search input with URL synchronization
+│   │   │   ├── StateCard.tsx       # Reusable metric card with TypeScript props
+│   │   │   ├── OrderSearch.tsx     # Leaf Client Component search input with URL synchronization
+│   │   │   └── OrderDateFilter.tsx # Leaf Client Component date filter with single chevron trigger
 │   │   ├── layout/         # Persistent structural components
 │   │   │   ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
 │   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
@@ -1193,17 +1194,18 @@ This orders feature directly embodies the core architectural rule of Next.js: **
 
 ### 17. Wholesaler Orders Page
 - **Location**: `src/app/wholesaler/orders/page.tsx`
-- **What it does**: Async React Server Component (zero client JavaScript bundle) that receives asynchronous `searchParams` (`Promise<{ status?: string; query?: string }>`) directly from Next.js, combines server-side status tab filtering and text search query matching, renders the `<OrderSearch />` leaf component inside `<Suspense>`, and displays the responsive order tracking table.
+- **What it does**: Async React Server Component (zero client JavaScript bundle) that receives asynchronous `searchParams` (`Promise<{ status?: string; query?: string; date?: string }>`) directly from Next.js, combines server-side status tab filtering, text search matching, and calendar date filtering, renders the `<OrderSearch />` and `<OrderDateFilter />` leaf components inside `<Suspense>`, and displays the responsive order tracking table.
 - **Key Snippet**:
   ```tsx
   interface PageProps {
-    searchParams: Promise<{ status?: string; query?: string }>;
+    searchParams: Promise<{ status?: string; query?: string; date?: string }>;
   }
 
   export default async function WholesalerOrdersPage({ searchParams }: PageProps) {
-    const { status, query } = await searchParams;
+    const { status, query, date } = await searchParams;
     const currentStatus = (status || "ALL").toUpperCase();
     const searchQuery = (query || "").toLowerCase();
+    const filterDate = date || "";
 
     const filteredOrders = MOCK_ORDERS.filter((order) => {
       const matchesStatus =
@@ -1212,15 +1214,22 @@ This orders feature directly embodies the core architectural rule of Next.js: **
         !searchQuery ||
         order.retailer.toLowerCase().includes(searchQuery) ||
         order.id.toLowerCase().includes(searchQuery);
+      const matchesDate =
+        !filterDate || formatToISODate(order.date) === filterDate;
 
-      return matchesStatus && matchesQuery;
+      return matchesStatus && matchesQuery && matchesDate;
     });
 
     return (
       <div className="mx-auto w-full max-w-6xl px-6 py-10">
-        <Suspense fallback={<div className="h-9 w-full max-w-sm rounded-lg bg-muted animate-pulse" />}>
-          <OrderSearch />
-        </Suspense>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+          <Suspense fallback={<div className="h-9 w-full max-w-sm rounded-lg bg-muted animate-pulse" />}>
+            <OrderSearch />
+          </Suspense>
+          <Suspense fallback={<div className="h-9 w-44 rounded-lg bg-muted animate-pulse" />}>
+            <OrderDateFilter />
+          </Suspense>
+        </div>
         {/* Render filteredOrders in server-rendered data table */}
       </div>
     );
@@ -1431,6 +1440,56 @@ This orders feature directly embodies the core architectural rule of Next.js: **
           onChange={(e) => handleSearch(e.target.value)}
           className="w-full pl-9 pr-4 py-2 rounded-lg border border-border bg-background text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
         />
+      </div>
+    );
+  }
+  ```
+
+---
+
+### 25. Order Date Filter Component
+- **Location**: `src/components/dashboard/OrderDateFilter.tsx`
+- **What it does**: Leaf Client Component date filter featuring a decorative left calendar icon matching the search bar, direct keyboard typing capability (`type="date"`), a single right-aligned chevron button to trigger the calendar popup, and native dark mode support (`color-scheme: dark`). Writes `?date=YYYY-MM-DD` to the URL while preserving existing `status` and `query` parameters.
+- **Key Snippet**:
+  ```tsx
+  "use client";
+
+  import { useSearchParams, usePathname, useRouter } from "next/navigation";
+  import { Calendar, ChevronDown, X } from "lucide-react";
+
+  export default function OrderDateFilter() {
+    const searchParams = useSearchParams();
+    const pathname = usePathname();
+    const { replace } = useRouter();
+    const currentDate = searchParams.get("date") || "";
+
+    function handleDateChange(date: string) {
+      const params = new URLSearchParams(searchParams.toString());
+      if (date) {
+        params.set("date", date);
+      } else {
+        params.delete("date");
+      }
+      replace(`${pathname}?${params.toString()}`);
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <div className="relative flex items-center">
+          <Calendar className="absolute left-3 w-4 h-4 text-muted-foreground pointer-events-none" />
+          <input
+            type="date"
+            value={currentDate}
+            onChange={(e) => handleDateChange(e.target.value)}
+            className="pl-9 pr-8 py-2 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all dark:[color-scheme:dark] [&::-webkit-calendar-picker-indicator]:opacity-0 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-2 [&::-webkit-calendar-picker-indicator]:w-5 [&::-webkit-calendar-picker-indicator]:h-5 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+          />
+          <ChevronDown className="absolute right-2.5 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        {currentDate && (
+          <button type="button" onClick={() => handleDateChange("")}>
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
     );
   }
