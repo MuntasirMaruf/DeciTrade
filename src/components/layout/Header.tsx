@@ -1,7 +1,29 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { LogOut } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
+import { createClient } from "@/utils/supabase/server";
 
-export default function Header() {
+export default async function Header() {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    const businessName =
+        (user?.user_metadata?.business_name as string) ||
+        user?.email?.split("@")[0] ||
+        "Partner";
+
+    const role = user?.user_metadata?.role as "WHOLESALER" | "RETAILER" | undefined;
+
+    async function handleSignOut() {
+        "use server";
+        const supabase = await createClient();
+        await supabase.auth.signOut();
+        redirect("/login");
+    }
+
     return (
         <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
             <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -15,10 +37,34 @@ export default function Header() {
                     </span>
                 </Link>
 
-                {/* Right Actions: Sign In & Register */}
+                {/* Right Actions: Theme Toggle, Profile Greeting, Role Badge & Sign Out */}
                 <div className="flex items-center gap-4">
                     <ThemeToggle />
-                    <p>Hi John!</p>
+
+                    {/* Dynamic Greeting & Role Pill */}
+                    <div className="flex items-center gap-2 text-sm">
+                        <span className="text-muted-foreground hidden sm:inline">Hi,</span>
+                        <span className="font-semibold text-header-foreground">
+                            {businessName}
+                        </span>
+                        {role && (
+                            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                                {role}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Server Action Sign Out */}
+                    <form action={handleSignOut}>
+                        <button
+                            type="submit"
+                            title="Sign out"
+                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                        >
+                            <LogOut className="h-3.5 w-3.5" />
+                            <span className="hidden sm:inline">Sign Out</span>
+                        </button>
+                    </form>
                 </div>
             </div>
         </header>

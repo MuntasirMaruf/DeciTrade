@@ -93,12 +93,7 @@ export default function RegistrationPage() {
 
         setIsLoading(false);
 
-        // Dynamic Role-Based Redirection:
-        const targetDashboard = selectedRole === "WHOLESALER"
-            ? "/wholesaler/dashboard"
-            : "/retailer/dashboard";
-
-        router.push(targetDashboard);
+        router.push("/onboarding");
     }
 
     return (

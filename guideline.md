@@ -831,7 +831,7 @@ This orders feature directly embodies the core architectural rule of Next.js: **
 DeciTrade implements a hybrid full-stack architecture combining **Next.js App Router** with **Supabase (PostgreSQL & GoTrue Auth)**.
 
 #### 1. The End-to-End Auth & Onboarding Lifecycle
-The user access and onboarding workflow spans 5 coordinated phases across the browser, Next.js server, Supabase Auth, and the PostgreSQL database:
+The user access and onboarding workflow spans 6 coordinated phases across the browser, Next.js server, Supabase Auth, and the PostgreSQL database:
 
 ```text
 1. Registration (/registration)
@@ -864,6 +864,14 @@ The user access and onboarding workflow spans 5 coordinated phases across the br
    └─ Automatically refreshes expired Supabase JWT session tokens
    └─ Blocks unauthenticated users -> redirects to /login
    └─ Enforces role segregation: prevents Retailers from accessing Wholesaler routes
+   │
+   ▼
+6. Portal Identity & Sign-Out (src/components/layout/Header.tsx)
+   └─ React Server Component reads active session via createClient() -> supabase.auth.getUser()
+   └─ Displays verified business_name and role pill in portal navbar
+   └─ Native <form action={handleSignOut}> executes inline Server Action ("use server")
+   └─ Invokes supabase.auth.signOut() to clear session cookies on the server
+   └─ Issues redirect("/login") -> Zero client-side JavaScript overhead
 ```
 
 ##### Local Development Auth Configuration
@@ -907,7 +915,7 @@ The registration pipeline executes across 4 sequential stages spanning the brows
  14. GoTrue returns HTTP 200 OK with User object, access_token (JWT), and refresh_token
  15. @supabase/ssr browser client writes session cookie (document.cookie)
  16. React 19 updates state: setIsLoading(false)
- 17. Programmatically redirects via router.push(targetDashboard) based on selectedRole
+ 17. Programmatically forwards to Step 2 onboarding via router.push("/onboarding")
 ```
 
 ##### Stage 1: Browser Dispatch & Payload Construction
@@ -1279,6 +1287,40 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 | **Cookie Mutation** | Direct browser cookie write | Writes `Set-Cookie` response headers (guarded by try/catch in RSC) |
 | **Security Mechanism** | RLS enforcement via Anon/Publishable Key | RLS enforcement via Session Cookie JWT |
 
+#### 8. Server Action Sign-Out Architecture (Zero-Client-JS Authentication Teardown)
+
+In DeciTrade, terminating an authenticated user session is architected as a pure React Server Component (RSC) operation paired with a Next.js Server Action (`"use server"`).
+
+```text
+[ Authenticated Portal Header (Header.tsx - RSC) ]
+  │
+  ├─ 1. Reads current user via createClient() -> supabase.auth.getUser()
+  ├─ 2. Renders dynamic business name & role badge without client hydration
+  │
+  ▼
+[ Native HTML Form (<form action={handleSignOut}>) ]
+  │
+  ├─ User clicks <button type="submit">
+  ├─ Browser initiates native form POST request to Next.js server endpoint
+  │
+  ▼
+[ Inline Server Action ("use server") ]
+  │
+  ├─ 1. Invokes createClient() from src/utils/supabase/server.ts
+  ├─ 2. Calls await supabase.auth.signOut()
+  │     └─ Supabase invalidates session and sets empty/expired Set-Cookie headers
+  ├─ 3. Calls redirect("/login")
+  │     └─ Throws Next.js NEXT_REDIRECT signal (HTTP 303)
+  ▼
+[ Browser Redirects to /login ]
+  └─ Land on unauthenticated page with fresh cookie jar; 0 KB client bundle overhead
+```
+
+##### Why Server Action `<form action>` Instead of Client `onClick`?
+1. **Zero Client-Side JavaScript Overhead**: The portal header remains an async Server Component. No `"use client"` directive is added, avoiding client bundle weight and React state hydration for the header.
+2. **Direct Server-Side Cookie Invalidation**: Calling `supabase.auth.signOut()` inside the Server Action writes HTTP `Set-Cookie` deletion headers into the active HTTP response stream before navigation occurs.
+3. **Elimination of Navigation Race Conditions**: In client-side logout (`await supabase.auth.signOut()` followed by `router.push('/login')`), component re-renders or concurrent layout transitions may fire before cookies have fully propagated across tabs, potentially causing flash-of-unauthorized content. The server action's `redirect()` halts execution immediately and delivers a canonical HTTP 303 redirect.
+
 ---
 
 ## 4. File Locations, Responsibilities & Snippets
@@ -1378,25 +1420,55 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ### 4. Authenticated Portal Header
 - **Location**: `src/components/layout/Header.tsx`
-- **What it does**: Persistent navbar for authenticated portal layouts. Renders brand logo linking to `/`, theme toggle (`<ThemeToggle />`), and user greeting/profile indicators as a clean React Server Component.
+- **What it does**: Persistent navbar for authenticated portal layouts (`/wholesaler/*`, `/retailer/*`). Renders brand logo linking to `/`, theme toggle (`<ThemeToggle />`), dynamic user greeting with registered business name or email fallback, role badge (`WHOLESALER` / `RETAILER`), and a zero-client-JS Sign Out form leveraging an inline Server Action (`"use server"`) that calls `supabase.auth.signOut()` and redirects to `/login`.
 - **Key Snippet**:
   ```tsx
   import Link from "next/link";
-  import ThemeToggle from "@/components/ui/ThemeToggle";
+  import { redirect } from "next/navigation";
+  import { LogOut } from "lucide-react";
+  import ThemeToggle from "../ui/ThemeToggle";
+  import { createClient } from "@/utils/supabase/server";
 
-  export default function Header() {
+  export default async function Header() {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    const businessName =
+      (user?.user_metadata?.business_name as string) ||
+      user?.email?.split("@")[0] ||
+      "Partner";
+    const role = user?.user_metadata?.role as "WHOLESALER" | "RETAILER" | undefined;
+
+    async function handleSignOut() {
+      "use server";
+      const supabase = await createClient();
+      await supabase.auth.signOut();
+      redirect("/login");
+    }
+
     return (
       <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black text-header">
-              DT
-            </div>
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black text-header">DT</div>
             <span className="text-lg font-bold text-header-foreground">DeciTrade</span>
           </Link>
           <div className="flex items-center gap-4">
             <ThemeToggle />
-            <p>Hi John!</p>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold text-header-foreground">{businessName}</span>
+              {role && (
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  {role}
+                </span>
+              )}
+            </div>
+            <form action={handleSignOut}>
+              <button type="submit" title="Sign out" className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer">
+                <LogOut className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </form>
           </div>
         </div>
       </header>
@@ -1549,7 +1621,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
   - Account creation with business type selection tabs (Wholesaler vs. Retailer).
   - Validates `business_name`, `phone_number` (`PHONE_REGEX`), `email` (`EMAIL_REGEX`), and `password` (`PASSWORD_REGEX`).
   - Calls client-side `supabase.auth.signUp()` passing user metadata (`role`, `business_name`, `phone_number`), triggering the PostgreSQL `handle_new_user()` trigger for automated profile and domain entity provisioning.
-  - Displays error banners on auth failure and dynamically redirects to the respective portal dashboard (`/wholesaler/dashboard` or `/retailer/dashboard`) on success.
+  - Displays error banners on auth failure and forwards to the Step 2 onboarding setup (`/onboarding`) on success.
   - **Dev Setup Requirement**: Supabase project setting must have "Confirm email" toggled **OFF** (`Authentication` &rarr; `Sign In / Providers` &rarr; `Email`) during local development so accounts are immediately active without an external SMTP server.
 - **Key Snippet**:
   ```tsx
@@ -1571,10 +1643,7 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
     return;
   }
   setIsLoading(false);
-  const targetDashboard = selectedRole === "WHOLESALER"
-    ? "/wholesaler/dashboard"
-    : "/retailer/dashboard";
-  router.push(targetDashboard);
+  router.push("/onboarding");
   ```
 
 ---
