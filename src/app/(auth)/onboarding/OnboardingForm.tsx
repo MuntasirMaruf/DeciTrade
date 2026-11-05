@@ -33,8 +33,7 @@ interface OnboardingFormProps {
 
 export default function OnboardingForm({ userId, initialRole }: OnboardingFormProps) {
     const router = useRouter();
-    const [role, setRole] = useState<"WHOLESALER" | "RETAILER">(initialRole);
-    const isWholesaler = role === "WHOLESALER";
+    const isWholesaler = initialRole === "WHOLESALER";
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -139,30 +138,22 @@ export default function OnboardingForm({ userId, initialRole }: OnboardingFormPr
                 </div>
             </div>
 
-            {/* Role Toggle Selector */}
-            <div className="mb-4 flex gap-2">
-                <button
-                    type="button"
-                    onClick={() => setRole("WHOLESALER")}
-                    className={`flex-1 py-1.5 px-3 rounded text-xs font-semibold border cursor-pointer ${isWholesaler
-                        ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 border-neutral-900 dark:border-neutral-100"
-                        : "border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400"
-                        }`}
-                >
-                    <Building2 className="w-3.5 h-3.5 inline mr-1" />
-                    Wholesaler Setup
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setRole("RETAILER")}
-                    className={`flex-1 py-1.5 px-3 rounded text-xs font-semibold border cursor-pointer ${!isWholesaler
-                        ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 border-neutral-900 dark:border-neutral-100"
-                        : "border-neutral-200 dark:border-neutral-800 text-neutral-600 dark:text-neutral-400"
-                        }`}
-                >
-                    <Store className="w-3.5 h-3.5 inline mr-1" />
-                    Retailer Setup
-                </button>
+            {/* Confirmed Account Type Pill */}
+            <div className="mb-4 flex items-center justify-between px-3.5 py-2.5 rounded-lg border border-border bg-muted/40 text-xs">
+                <span className="text-muted-foreground">Account Type</span>
+                <span className="inline-flex items-center gap-1.5 font-semibold text-foreground">
+                    {isWholesaler ? (
+                        <>
+                            <Building2 className="w-3.5 h-3.5 text-primary" />
+                            Wholesaler
+                        </>
+                    ) : (
+                        <>
+                            <Store className="w-3.5 h-3.5 text-primary" />
+                            Retailer
+                        </>
+                    )}
+                </span>
             </div>
 
             {error && (
