@@ -30,6 +30,11 @@ deci-trade/
 │   │   │   │   └── page.tsx        # Route: /registration (Business type selection & signup)
 │   │   │   └── onboarding/
 │   │   │       └── page.tsx        # Route: /onboarding (Step 2 business setup funnel)
+│   │   ├── retailer/       # Retailer portal routes
+│   │   │   ├── layout.tsx      # Nested layout: renders Header + portal shell
+│   │   │   ├── page.tsx        # Route: /retailer (Server redirect to /retailer/dashboard)
+│   │   │   └── dashboard/
+│   │   │       └── page.tsx    # Route: /retailer/dashboard (RSC Retailer metrics)
 │   │   ├── wholesaler/     # Wholesaler portal routes
 │   │   │   ├── layout.tsx      # Nested layout: renders Header + portal shell
 │   │   │   ├── page.tsx        # Route: /wholesaler (Server redirect to /wholesaler/dashboard)
@@ -621,7 +626,64 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 15. Reusable Button Component
+### 15. Retailer Portal Layout
+- **Location**: `src/app/retailer/layout.tsx`
+- **What it does**: Nested portal layout shell for all `/retailer/*` routes. Renders the shared logged-in `<Header />` at the top and wraps all child routes in a full-height container.
+- **Key Snippet**:
+  ```tsx
+  import Header from "@/components/layout/Header";
+
+  export default function RetailerLayout({ children }: { children: React.ReactNode }) {
+    return (
+      <div className="flex flex-1 flex-col">
+        <Header />
+        <div className="flex flex-1 flex-col bg-neutral-50 dark:bg-black">
+          <div className="flex-1">{children}</div>
+        </div>
+      </div>
+    );
+  }
+  ```
+
+---
+
+### 16. Retailer Root Redirection Page
+- **Location**: `src/app/retailer/page.tsx`
+- **What it does**: React Server Component route handler at `/retailer` that immediately forwards incoming traffic to `/retailer/dashboard` via Next.js server-side `redirect()`.
+- **Key Snippet**:
+  ```tsx
+  import { redirect } from "next/navigation";
+
+  export default function RetailerPage() {
+    redirect("/retailer/dashboard");
+  }
+  ```
+
+---
+
+### 17. Retailer Dashboard Page
+- **Location**: `src/app/retailer/dashboard/page.tsx`
+- **What it does**: A React Server Component portal for retailers that renders retail-specific metrics (`Active Deliveries`, `Connected Wholesalers`, `Monthly Procurement`) using the reusable `<StatCard />` component.
+- **Key Snippet**:
+  ```tsx
+  import StatCard from "@/components/dashboard/StatCard";
+
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-10">
+    {stats.map((stat) => (
+      <StatCard
+        key={stat.title}
+        title={stat.title}
+        value={stat.value}
+        change={stat.change}
+        icon={stat.icon}
+      />
+    ))}
+  </div>
+  ```
+
+---
+
+### 18. Reusable Button Component
 - **Location**: `src/components/ui/Button.tsx`
 - **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
 - **Key Snippet**:
@@ -681,7 +743,7 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 
 ---
 
-### 16. Theme Toggle Component
+### 19. Theme Toggle Component
 - **Location**: `src/components/ui/ThemeToggle.tsx`
 - **What it does**: Client Component that toggles the `.dark` class on `document.documentElement` (`<html>`), persists user choice in `localStorage`, and uses pure CSS toggling (`dark:hidden` / `hidden dark:block`) to eliminate hydration delays and icon pop-in.
 - **Key Snippet**:
