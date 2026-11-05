@@ -11,6 +11,7 @@ This document tracks the architecture, component locations, responsibilities, st
 - **Language**: [TypeScript](https://www.typescriptlang.org/) (Strict mode)
 - **Styling**: [Tailwind CSS v4](https://tailwindcss.com/)
 - **Icons**: [Lucide React](https://lucide.dev/) (`lucide-react`)
+- **Database & Auth**: [Supabase](https://supabase.com/) (Managed PostgreSQL, GoTrue Auth, Row Level Security)
 - **Bundler**: Turbopack
 
 ---
@@ -62,8 +63,14 @@ deci-trade/
 │   │   └── ui/             # Reusable design system primitives
 │   │       ├── Button.tsx      # Reusable button with variants and loading state
 │   │       └── ThemeToggle.tsx # Client-side theme toggle with localStorage persistence
-│   └── lib/                # Shared utilities & validators
-│       └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
+│   ├── lib/                # Shared utilities & validators
+│   │   └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
+│   └── utils/              # Third-party SDK & client initializations
+│       └── supabase/
+│           ├── client.ts   # Browser Client for Client Components (@supabase/ssr)
+│           └── server.ts   # Server Client for Server Components & Actions (@supabase/ssr)
+├── b2b_wholesale_architecture_plan.md # Architectural blueprint & hybrid pattern specification
+├── supabase_schema.sql     # Complete PostgreSQL DDL (10 ENUMs, 14 tables, triggers, RLS)
 ├── guideline.md            # Living architecture & implementation documentation
 ├── package.json
 └── tsconfig.json           # Path alias (@/* -> ./src/*)
@@ -816,6 +823,238 @@ This orders feature directly embodies the core architectural rule of Next.js: **
 
 ---
 
+### Q. Full-Stack Supabase Auth & PostgreSQL Schema Architecture
+
+DeciTrade implements a hybrid full-stack architecture combining **Next.js App Router** with **Supabase (PostgreSQL & GoTrue Auth)**.
+
+#### 1. The End-to-End Auth & Onboarding Lifecycle
+The user access and onboarding workflow spans 5 coordinated phases across the browser, Next.js server, Supabase Auth, and the PostgreSQL database:
+
+```text
+1. Registration (/registration)
+   └─ User submits: email, password, role ('WHOLESALER' | 'RETAILER'), business_name, phone_number
+   └─ Next.js invokes: supabase.auth.signUp() with raw_user_meta_data
+   │
+   ▼
+2. Automated Database Trigger (handle_new_user)
+   └─ PostgreSQL trigger intercepts AFTER INSERT ON auth.users
+   └─ Automatically inserts 1-to-1 profile into public.profiles
+   └─ If 'WHOLESALER', initializes record in public.wholesalers
+   └─ If 'RETAILER', initializes record in public.retailers
+   │
+   ▼
+3. Onboarding (/onboarding — Step 2 Business Setup)
+   └─ User completes role-specific fields (warehouse_address or delivery_address, licenses)
+   └─ Updates public.wholesalers or public.retailers where id = auth.uid()
+   │
+   ▼
+4. Login & Dynamic Portal Routing (/login)
+   └─ User enters credentials -> supabase.auth.signInWithPassword()
+   └─ Supabase sets secure HttpOnly session cookie
+   └─ App queries public.profiles.role -> dynamically forwards to /wholesaler/dashboard or /retailer/dashboard
+   │
+   ▼
+5. Route Protection (middleware.ts)
+   └─ Intercepts requests to /wholesaler/* and /retailer/*
+   └─ Blocks unauthenticated users -> redirects to /login
+   └─ Enforces role segregation: prevents Retailers from accessing Wholesaler routes
+```
+
+##### Local Development Auth Configuration
+- **Email Confirmation Setting**: In Supabase Dashboard &rarr; **Authentication** &rarr; **Sign In / Providers** (under `CONFIGURATION`) &rarr; click **Email** &rarr; toggle **OFF** `"Confirm email"` and click **Save**.
+- **Why**: By default, Supabase holds newly registered accounts in an unconfirmed state (`confirmed_at: null`) until an email verification link is clicked. Disabling this during development enables immediate login, role verification, and direct testing of the onboarding funnel without requiring custom SMTP infrastructure. (In production, this must remain enabled).
+
+#### 2. Detailed Data Journey: How Registration Data Leaves Next.js and Flows into Supabase
+
+The registration pipeline executes across 4 sequential stages spanning the browser client, network wire, Supabase GoTrue Auth service, PostgreSQL engine, and client session hydration:
+
+```text
+[ Browser (Next.js Client) ]
+  1. User fills registration form (email, password, businessName, phone, selectedRole)
+  2. handleSubmit executes client-side regex validations (validator.ts)
+  3. createClient() initializes createBrowserClient with publishable key
+  4. supabase.auth.signUp() packages payload with options.data (metadata)
+         │
+         │ HTTPS POST /auth/v1/signup (TLS encrypted)
+         │ Headers: apikey, Content-Type: application/json
+         ▼
+[ Supabase GoTrue Service ]
+  5. GoTrue validates email format & unique constraint
+  6. Hashes password securely via bcrypt + salt
+  7. Checks "Confirm email" status (immediately confirmed if disabled for dev)
+  8. Executes internal INSERT INTO auth.users
+         │
+         │ Internal PostgreSQL Engine Event: AFTER INSERT ON auth.users
+         ▼
+[ PostgreSQL Database Engine (supabase_schema.sql) ]
+  9. Trigger on_auth_user_created intercepts newly inserted row
+ 10. Executes handle_new_user() in SECURITY DEFINER mode (bypasses RLS)
+ 11. Reads NEW.raw_user_meta_data ('role', 'business_name', 'phone_number')
+ 12. Atomic INSERT INTO public.profiles (id, role, business_name, phone_number)
+ 13. Conditional domain initialization:
+     ├─ IF role = 'WHOLESALER' ──> INSERT INTO public.wholesalers (id, warehouse_address)
+     └─ ELSIF role = 'RETAILER' ──> INSERT INTO public.retailers (id, delivery_address)
+         │
+         │ Database Transaction Commits (All-or-Nothing)
+         ▼
+[ Return Trip & Client Session Hydration ]
+ 14. GoTrue returns HTTP 200 OK with User object, access_token (JWT), and refresh_token
+ 15. @supabase/ssr browser client writes session cookie (document.cookie)
+ 16. React 19 updates state: setIsLoading(false) -> setIsSuccess(true)
+ 17. UI unmounts form and renders success card with CTA linking to /onboarding
+```
+
+##### Stage 1: Browser Dispatch & Payload Construction
+When the user clicks "Create account" in `src/app/(auth)/registration/page.tsx`:
+1. `handleSubmit` prevents default form submission and executes client-side validation against `EMAIL_REGEX`, `PASSWORD_REGEX`, and `PHONE_REGEX` from `src/lib/validator.ts`.
+2. The browser-side Supabase client (`createClient()` from `src/utils/supabase/client.ts`) is instantiated using `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+3. `supabase.auth.signUp()` transforms the form data into a structured JSON payload:
+   ```json
+   {
+     "email": "wholesaler@example.com",
+     "password": "Password123!",
+     "data": {
+       "role": "WHOLESALER",
+       "business_name": "Apex Wholesale Ltd",
+       "phone_number": "+8801712345678"
+     }
+   }
+   ```
+4. Dispatches an HTTPS `POST` request to `https://<project-ref>.supabase.co/auth/v1/signup` over TLS.
+
+##### Stage 2: Supabase GoTrue Auth Processing
+1. Supabase's GoTrue authentication microservice receives the request and verifies the public API key.
+2. It validates that the email address is unique across the project.
+3. The password is cryptographically hashed with `bcrypt` (never stored in plaintext).
+4. If `"Confirm email"` is disabled (local dev), the user's `email_confirmed_at` timestamp is immediately set to current UTC time.
+5. GoTrue writes the new identity into the managed PostgreSQL table `auth.users`, storing `data` inside the `raw_user_meta_data` JSONB column.
+
+##### Stage 3: Atomic PostgreSQL Trigger & Domain Entity Provisioning
+1. PostgreSQL detects `AFTER INSERT ON auth.users` and fires the `on_auth_user_created` trigger.
+2. The trigger executes `public.handle_new_user()` with `SECURITY DEFINER` privileges (elevated service privileges that bypass client-facing Row Level Security).
+3. `handle_new_user()` performs two atomic operations within the same database transaction:
+   - **Step A (`public.profiles`)**: Inserts a 1-to-1 record linking to `NEW.id`, populating `role`, `business_name`, and `phone_number`.
+   - **Step B (Domain Table)**: Evaluates the parsed `user_role`:
+     - If `'WHOLESALER'`, inserts an initial row into `public.wholesalers(id, warehouse_address)` with `id = NEW.id`.
+     - If `'RETAILER'`, inserts an initial row into `public.retailers(id, delivery_address)` with `id = NEW.id`.
+4. **Atomicity Guarantee**: If any constraint fails, the entire database transaction rolls back, preventing orphaned or desynchronized accounts.
+
+##### Stage 4: Response, Session Storage & Next.js UI Transition
+1. Supabase GoTrue returns an HTTP 200 OK response containing the newly created `User` record alongside an `access_token` (JWT) and a `refresh_token`.
+2. `@supabase/ssr` (`createBrowserClient`) writes the session tokens into browser storage (`document.cookie`), ensuring future requests from Next.js Server Components and Server Actions receive the session via `cookies()`.
+3. React 19 handles the asynchronous return: `setIsLoading(false)` and `setIsSuccess(true)`.
+4. The registration form unmounts, and the page renders the green success card directing the user to Step 2 (`/onboarding`).
+
+#### 3. The PostgreSQL Automated User Trigger (`handle_new_user`)
+Rather than relying on client-side JavaScript to execute multiple separate `INSERT` statements across network hops, a PostgreSQL `SECURITY DEFINER` trigger guarantees atomic profile creation inside the database engine:
+
+```sql
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+    user_role_val public.user_role;
+BEGIN
+    user_role_val := COALESCE(
+        (NEW.raw_user_meta_data->>'role')::public.user_role,
+        'WHOLESALER'::public.user_role
+    );
+
+    -- 1. Atomic profile creation
+    INSERT INTO public.profiles (id, role, business_name, phone_number)
+    VALUES (NEW.id, user_role_val, NEW.raw_user_meta_data->>'business_name', NEW.raw_user_meta_data->>'phone_number');
+
+    -- 2. Role-specific domain table initialization
+    IF user_role_val = 'WHOLESALER' THEN
+        INSERT INTO public.wholesalers (id, warehouse_address)
+        VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'warehouse_address', ''));
+    ELSIF user_role_val = 'RETAILER' THEN
+        INSERT INTO public.retailers (id, delivery_address)
+        VALUES (NEW.id, COALESCE(NEW.raw_user_meta_data->>'delivery_address', ''));
+    ELSIF user_role_val = 'ADMIN' THEN
+        INSERT INTO public.admins (id, admin_role, is_super_admin)
+        VALUES (NEW.id, 'SUPPORT', FALSE);
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+```
+
+#### 4. Database Domain Model & Schema Dictionary
+The platform schema (`supabase_schema.sql`) organizes data into 6 relational domains:
+1. **Identity & Profiles**: 
+   - `profiles`: Base table for all personas (`WHOLESALER`, `RETAILER`, `CUSTOMER`, `ADMIN`).
+   - `wholesalers`: Warehouse address, minimum order amounts, accepted payment terms, catalog public toggles.
+   - `retailers`: Store delivery address, shop category.
+   - `admins`: Role-Based Access Control (`admin_role`: `'SUPER_ADMIN'`, `'COMPLIANCE'`, `'SUPPORT'`, `'FINANCE'`), permissions array (`permissions TEXT[]`), department.
+   - `CUSTOMER`: Pure consumers live directly in `profiles` with zero overhead.
+2. **Networking & KYC**: `invitation_tokens` (cryptographic, rate-limited invite links), `connections` (wholesaler-retailer links with state machine: `PENDING_REVIEW` $\rightarrow$ `ACTIVE`), `kyc_documents`, `kyc_revision_history`.
+3. **Catalog & Products**: `categories`, `products` (with `reserved_quantity` for concurrency stock locks, `cost_price` for private margin calculations, `compare_at_price` and discount scheduling for promotional sales, and `price_tiers` JSONB for bulk volume discounts).
+4. **Orders & Negotiation**: `orders` (with permanent `shipping_address_snapshot`), `order_items` (supporting the line-item counter-offer model: `requested_quantity` vs. `confirmed_quantity`), `invoices`, `order_status_history`.
+5. **Notifications**: `notifications` (system signals, connection status alerts, invoice updates).
+
+#### 5. Hybrid CQRS Architecture (Reads via Supabase BFF, Mutations via NestJS)
+DeciTrade follows the **CQRS + BFF Pattern** (Command Query Responsibility Segregation with a Backend-for-Frontend):
+1. **The Read Path (Instant, Streaming UI)**:
+   - Next.js Server Components query Supabase directly via `@supabase/ssr` using the authenticated user's session cookie.
+   - Enables sub-10ms page loads for order queues, order details (`orders` joined with `order_items`), catalog filtering, and categories without intermediate API proxy latency.
+   - **Margin Protection**: Server Components strictly use explicit column projection (omitting `cost_price`) when displaying product cards to retailers.
+2. **The Write Path (Transactional Integrity & State Machines)**:
+   - Complex business operations (submitting purchase orders, issuing counter-offers, accepting/declining orders with reason, inventory deduction, and KYC approval) are dispatched to **NestJS endpoints**.
+   - NestJS wraps state changes in atomic PostgreSQL transactions (`SELECT FOR UPDATE`), coordinates background BullMQ workers (PDF invoice generation), and triggers external communications (WhatsApp Business API, Email).
+3. **Child Table RLS Policies**:
+   - To support nested joins (e.g. `.select('*, order_items(*)')`), PostgreSQL RLS is enabled on both parent and child tables (`orders`, `order_items`, `order_status_history`, `kyc_documents`, `categories`), enforcing participant checks (`wholesaler_id = auth.uid() OR retailer_id = auth.uid()`).
+
+#### 6. Deep-Dive Reanalysis: The Dual-Client Architecture (`client.ts` vs. `server.ts`)
+
+In Next.js App Router, code executes across two fundamentally isolated runtimes:
+1. **The Browser Environment (Client Runtime)**: Client Components marked with `"use client"`, where React state, event handlers, and browser APIs (`document.cookie`, `window`) exist.
+2. **The Server Environment (Node.js / Edge Runtime)**: React Server Components (RSC), Server Actions (`"use server"`), and Route Handlers, where browser DOM APIs do not exist and identity must be retrieved from incoming HTTP request headers.
+
+To bridge this runtime divide without session desynchronization, `@supabase/ssr` replaces legacy auth wrappers with a cookie-first dual-client architecture:
+
+##### A. The Browser Client (`src/utils/supabase/client.ts`)
+- **Factory Method**: `createBrowserClient(url, key)` from `@supabase/ssr`.
+- **Cookie Mechanism**: Interfaces natively with the browser's `document.cookie` storage. It automatically persists access and refresh tokens upon login and includes them in outgoing network calls.
+- **Environment Scope**: Exclusively imported in Client Components (`"use client"`).
+- **Security Posture**: Uses `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_...`). Because this public key is bundled into client-side JavaScript, security is enforced strictly by PostgreSQL Row Level Security (RLS) policies.
+- **DeciTrade Role**: Powers interactive client forms (e.g. `RegistrationPage`, `LoginPage`) and handles client-side Supabase Realtime WebSocket subscriptions (`supabase.channel(...)`).
+
+##### B. The Server Client (`src/utils/supabase/server.ts`)
+- **Factory Method**: `createServerClient(url, key, { cookies })` from `@supabase/ssr`.
+- **Next.js 15+ Async Cookie Contract**: In modern Next.js (v15 and v16), `cookies()` from `next/headers` is an **asynchronous Promise**. The helper is structured as an `async function createClient()`:
+  ```typescript
+  export async function createClient() {
+    const cookieStore = await cookies();
+    return createServerClient(supabaseUrl!, supabaseKey!, { ... });
+  }
+  ```
+  This architectural pattern allows callers in Server Components and Server Actions to cleanly write `const supabase = await createClient();` without needing to manually unwrap and pass `cookieStore` as a parameter.
+- **The Cookie Adapter Pattern (`getAll` and `setAll`)**:
+  - `getAll()`: Reads all incoming cookies from the incoming HTTP request headers, passing the user's session JWT to Supabase so PostgreSQL can evaluate `auth.uid()` in RLS policies.
+  - `setAll()`: Emits `Set-Cookie` HTTP response headers when an access token refreshes.
+  - **The Try/Catch Guard**: In Next.js App Router, **React Server Components (RSC) are prohibited from setting cookies** during rendering (they can only stream read-only HTML). If a token refresh occurs during a Server Component render, the `catch` block safely ignores the error; the actual cookie persistence is delegated to Next.js middleware or Server Actions.
+- **Environment Scope**: Exclusively imported in Server Components, Server Actions (`"use server"`), and Route Handlers. Never import `server.ts` into a `"use client"` file.
+- **DeciTrade Role**: Executes fast, server-side data fetching for orders (`/wholesaler/orders`), catalog browsing, and profile data in portal layouts.
+
+##### C. Architecture Comparison Matrix
+
+| Architectural Dimension | Browser Client (`client.ts`) | Server Client (`server.ts`) |
+| :--- | :--- | :--- |
+| **Location** | `src/utils/supabase/client.ts` | `src/utils/supabase/server.ts` |
+| **Underlying SDK Method** | `createBrowserClient()` | `createServerClient()` |
+| **Allowed Runtime** | Browser only (`"use client"`) | Server only (RSC, Server Actions, Route Handlers) |
+| **Session Storage** | `document.cookie` (Client-side) | `cookies()` from `next/headers` (HTTP headers) |
+| **Async Signature** | Synchronous: `const supabase = createClient()` | Asynchronous: `const supabase = await createClient()` |
+| **Cookie Mutation** | Direct browser cookie write | Writes `Set-Cookie` response headers (guarded by try/catch in RSC) |
+| **Security Mechanism** | RLS enforcement via Anon/Publishable Key | RLS enforcement via Session Cookie JWT |
+
+---
+
 ## 4. File Locations, Responsibilities & Snippets
 
 ### 1. Root Layout
@@ -1074,13 +1313,30 @@ This orders feature directly embodies the core architectural rule of Next.js: **
 - **What it does**:
   - Account creation with business type selection tabs (Wholesaler vs. Retailer).
   - Validates `business_name`, `phone_number` (`PHONE_REGEX`), `email` (`EMAIL_REGEX`), and `password` (`PASSWORD_REGEX`).
-  - Displays a success banner with a link to Step 2 (`/onboarding`).
+  - Calls client-side `supabase.auth.signUp()` passing user metadata (`role`, `business_name`, `phone_number`), triggering the PostgreSQL `handle_new_user()` trigger for automated profile and domain entity provisioning.
+  - Displays error banners on auth failure and a success card directing to Step 2 (`/onboarding`).
+  - **Dev Setup Requirement**: Supabase project setting must have "Confirm email" toggled **OFF** (`Authentication` &rarr; `Sign In / Providers` &rarr; `Email`) during local development so accounts are immediately active without an external SMTP server.
 - **Key Snippet**:
   ```tsx
-  <form onSubmit={handleSubmit} noValidate className="space-y-3.5">
-    <input type="hidden" name="role" value={selectedRole} />
-    {/* Validates inputs sequentially and displays <AlertCircle> banner */}
-  </form>
+  const supabase = createClient();
+  const { data, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        role: selectedRole,
+        business_name: businessName,
+        phone_number: phone,
+      },
+    },
+  });
+  if (signUpError) {
+    setError(signUpError.message);
+    setIsLoading(false);
+    return;
+  }
+  setIsLoading(false);
+  setIsSuccess(true);
   ```
 
 ---
@@ -1491,6 +1747,91 @@ This orders feature directly embodies the core architectural rule of Next.js: **
           </button>
         )}
       </div>
+    );
+  }
+  ```
+
+---
+
+### 26. Database DDL & RLS Blueprint
+- **Location**: `supabase_schema.sql`
+- **What it does**: Master PostgreSQL DDL script containing 11 ENUM types, 15 domain tables (`profiles`, `wholesalers`, `retailers`, `admins`, `invitation_tokens`, `connections`, `kyc_documents`, `kyc_revision_history`, `categories`, `products`, `orders`, `order_items`, `invoices`, `order_status_history`, `notifications`), automated user provisioning triggers on `auth.users`, and Row Level Security (RLS) policies for Supabase deployment.
+- **Key Snippet**:
+  ```sql
+  -- Automated user provisioning trigger
+  CREATE TRIGGER on_auth_user_created
+      AFTER INSERT ON auth.users
+      FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+  -- Row Level Security: Wholesalers manage own products
+  CREATE POLICY "Wholesalers have full control over own products" ON public.products
+      FOR ALL TO authenticated USING (auth.uid() = wholesaler_id);
+
+  -- Participants view orders and nested order items (for direct Next.js Server Component joins)
+  CREATE POLICY "Participants view their orders" ON public.orders
+      FOR SELECT TO authenticated USING (auth.uid() = wholesaler_id OR auth.uid() = retailer_id);
+
+  CREATE POLICY "Participants view their order items" ON public.order_items
+      FOR SELECT TO authenticated USING (
+          EXISTS (
+              SELECT 1 FROM public.orders o
+              WHERE o.id = order_items.order_id
+              AND (o.wholesaler_id = auth.uid() OR o.retailer_id = auth.uid())
+          )
+      );
+  ```
+
+---
+
+### 27. Supabase Browser Client Helper
+- **Location**: `src/utils/supabase/client.ts`
+- **What it does**: Initializes the client-side Supabase client using `@supabase/ssr` `createBrowserClient`, reading `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for use inside Client Components (`"use client"`).
+- **Key Snippet**:
+  ```typescript
+  import { createBrowserClient } from "@supabase/ssr";
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+  export const createClient = () =>
+    createBrowserClient(
+      supabaseUrl!,
+      supabaseKey!,
+    );
+  ```
+
+---
+
+### 28. Supabase Server Client Helper
+- **Location**: `src/utils/supabase/server.ts`
+- **What it does**: Initializes the server-side Supabase client using `@supabase/ssr` `createServerClient` and Next.js 15+ asynchronous `cookies()` from `next/headers`, enabling secure reading and writing of HTTP-only session cookies in Server Components, Server Actions, and Route Handlers.
+- **Key Snippet**:
+  ```typescript
+  import { createServerClient } from "@supabase/ssr";
+  import { cookies } from "next/headers";
+
+  export async function createClient() {
+    const cookieStore = await cookies();
+
+    return createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return cookieStore.getAll();
+          },
+          setAll(cookiesToSet) {
+            try {
+              cookiesToSet.forEach(({ name, value, options }) =>
+                cookieStore.set(name, value, options)
+              );
+            } catch {
+              // Ignore when called from Server Component
+            }
+          },
+        },
+      }
     );
   }
   ```

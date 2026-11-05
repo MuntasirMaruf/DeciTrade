@@ -15,6 +15,8 @@ import {
     AlertCircle,
 } from "lucide-react";
 import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "@/lib/validator";
+import { createClient } from "@/utils/supabase/client";
+import router from "next/router";
 
 type UserRole = "WHOLESALER" | "RETAILER";
 
@@ -23,7 +25,6 @@ export default function RegistrationPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isSuccess, setIsSuccess] = useState(false);
 
     async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault();
@@ -69,10 +70,28 @@ export default function RegistrationPage() {
         setIsLoading(true);
 
         // Simulate account creation
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        const supabase = createClient();
+        const { data, error: signUpError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+                data: {
+                    role: selectedRole,
+                    business_name: businessName,
+                    phone_number: phone,
+                },
+            },
+        });
+        if (signUpError) {
+            setError(signUpError.message);
+            setIsLoading(false);
+            return;
+        }
 
         setIsLoading(false);
-        setIsSuccess(true);
+        router.push("/onboarding/");
     }
 
     return (
@@ -85,19 +104,6 @@ export default function RegistrationPage() {
                     Join our wholesale and retail distribution network
                 </p>
             </div>
-
-            {isSuccess && (
-                <div className="mb-5 p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
-                    <p className="font-semibold text-sm">Account created successfully!</p>
-                    <p>Complete your profile setup to activate your business dashboard.</p>
-                    <Link
-                        href="/onboarding"
-                        className="inline-block bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-3 py-1.5 rounded font-semibold text-xs"
-                    >
-                        Continue to Business Setup &rarr;
-                    </Link>
-                </div>
-            )}
 
             {/* Role Selection Tabs */}
             <div className="mb-5">
