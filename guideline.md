@@ -170,9 +170,75 @@ Next.js provides three distinct ways to navigate:
 ---
 
 ### E. React Server Components (RSC) vs. Client Components
-- By default in the App Router, components are **Server Components**. They run on the server and send static HTML to the browser with zero client JavaScript bundle overhead.
-- Screens that merely display data without event listeners (like `wholesaler/dashboard/page.tsx`) remain Server Components.
-- Interactive screens requiring browser state (`useState`), programmatic routing (`useRouter`), or event listeners (`onSubmit`, `onClick`) specify `"use client";` at line 1.
+
+The Next.js App Router uses a dual-component model: **Server Components** and **Client Components**. By default, every component inside the `app` directory is a Server Component.
+
+#### 1. What are Server Components (RSC)?
+- **Execution Environment**: Execute **strictly on the server** during build time or request time. Their code is never sent to the client's browser.
+- **Output**: Render into an intermediate format (React Server Component Payload) and stream pure HTML to the browser.
+- **Zero Client Bundle Size**: Dependencies imported inside a Server Component (e.g. database SDKs, Markdown parsers, heavy date libraries) add **0 KB** to the client JavaScript bundle.
+- **Direct Backend Access**: Can directly query databases, read server files (`fs`), and access private environment variables (API secrets) without creating dedicated API routes.
+- **Async by Nature**: Can be declared as `async function MyComponent()` and use native `await` directly in the component body.
+
+#### 2. What are Client Components?
+- **Execution Environment**: Pre-rendered into HTML on the server, then **hydrated** in the browser with interactive JavaScript.
+- **Opt-In Directive**: Declared by placing `"use client";` at the very top of the file (before any imports).
+- **Client Capabilities**: Have access to browser-only APIs (`window`, `localStorage`, `document`), React state hooks (`useState`, `useReducer`), lifecycle hooks (`useEffect`), and event listeners (`onClick`, `onChange`, `onSubmit`).
+
+#### 3. When to Use Which: Architectural Decision Matrix
+
+| Capability / Requirement | Server Component (Default) | Client Component (`"use client"`) |
+| :--- | :---: | :---: |
+| Fetch data directly from DB / backend | ✅ Yes (`async/await`) | ❌ No |
+| Access secret API keys & credentials | ✅ Yes (Safe from browser) | ❌ No (Leaked in client bundle) |
+| Reduce JavaScript sent to browser | ✅ Yes (0 KB bundle) | ❌ No (Adds to bundle) |
+| Read URL query params on `page.tsx` | ✅ Yes (`searchParams` prop) | ⚠️ Requires `useSearchParams()` + `<Suspense>` |
+| State hooks (`useState`, `useReducer`) | ❌ No | ✅ Yes |
+| Lifecycle hooks (`useEffect`) | ❌ No | ✅ Yes |
+| DOM Event listeners (`onClick`, `onSubmit`) | ❌ No | ✅ Yes |
+| Browser APIs (`window`, `localStorage`) | ❌ No | ✅ Yes |
+| Custom hooks dependent on browser state | ❌ No | ✅ Yes |
+
+#### 4. How to Use Them: Component Boundary Patterns
+
+##### A. The Leaf Component Pattern (Pushing `"use client"` Down)
+To keep the application fast, keep the parent page as a Server Component and extract only the interactive widget into a Client Component leaf:
+```text
+┌─────────────────────────────────────────────────────────────┐
+│ OrdersPage (Server Component - fetches data, 0kb JS)        │
+│  ├─ StatCards (Server Component - static display)           │
+│  ├─ OrdersTable (Server Component - static table render)    │
+│  └─ OrderFilterBar ("use client" - interactive tab clicks)  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### B. Passing Server Components as Children to Client Wrappers
+A Client Component **cannot directly import a Server Component** (because importing pulls code into the client bundle). However, a Client Component can receive Server Components via the `children` prop:
+```tsx
+// Client Component wrapper:
+"use client";
+export function CollapsibleSection({ children }: { children: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return <div>{open && children}</div>;
+}
+
+// Server Component page passes server-rendered child:
+export default function Page() {
+  return (
+    <CollapsibleSection>
+      <ServerRenderedHeavyDataFeed />
+    </CollapsibleSection>
+  );
+}
+```
+
+##### C. Serialization Rule Across Boundaries
+When passing props from a Server Component to a Client Component, values must be **serializable to JSON** (strings, numbers, booleans, plain objects, arrays). Functions, class instances, or database connections cannot cross the network boundary.
+
+#### 5. Server Component `searchParams` vs. Client `useSearchParams()`
+In Next.js App Router, reading query parameters differs by component type:
+- **Server Component (`page.tsx`)**: Receives `searchParams` directly as a prop (`Promise<{ status?: string }>` in Next.js 15+). Allows filtering or querying before HTML is sent.
+- **Client Component (`"use client"`)**: Uses the `useSearchParams()` hook, which reads the browser URL reactively and requires a `<Suspense>` boundary when prerendered.
 
 ---
 
@@ -609,6 +675,71 @@ Do **not** add `"use client"` or path-checking hooks to `Footer.tsx`. Instead, k
 
 ---
 
+### P. Server-Driven URL State & Data Filtering (The Orders Page Pattern)
+
+In modern Next.js App Router applications, managing table filters, search terms, and pagination can be handled entirely on the server using URL query parameters, avoiding the complexity and bundle weight of client-side state.
+
+#### 1. Architectural Concept: URL as the Single Source of Truth
+In this pattern, the application separates **triggering a state change** from **rendering the data**:
+- **The Filter Buttons Only Change the URL**: The filter tabs are plain declarative `<Link>` components (e.g. `<Link href="/wholesaler/orders?status=PENDING">`). They contain zero filtering logic, zero `onClick` handlers, and zero state setters. Their sole responsibility is updating the browser address bar.
+- **The Server Derives State from the URL**: The page component (`WholesalerOrdersPage`) derives its entire view strictly by reading the URL via the `searchParams` prop.
+- **Soft Client Navigation**: Unlike traditional HTML `<a>` tags that trigger a full, flashing page reload, Next.js `<Link>` intercepts the click, updates the URL bar immediately via the HTML5 History API (`history.pushState`), and fetches only the updated React Server Component (RSC) Payload in the background. React reconciles the DOM in place, giving the user an instant, smooth transition without a page reload.
+
+#### 2. Why `searchParams` is an Asynchronous Promise in Next.js 15+
+In Next.js 15+, `searchParams` passed to `page.tsx` is typed as a `Promise`:
+```tsx
+interface PageProps {
+  searchParams: Promise<{ status?: string }>;
+}
+
+export default async function WholesalerOrdersPage({ searchParams }: PageProps) {
+  const { status } = await searchParams;
+  // ...
+}
+```
+- **Asynchronous Decoupling**: Making `searchParams` a `Promise` allows the App Router server to begin rendering static layout shells immediately without waiting for dynamic query parameters to resolve.
+- **Server Execution**: The component runs asynchronously on the server (`Node.js`), awaiting `searchParams` before executing filtering logic or database queries.
+
+#### 3. Execution Lifecycle on the Server
+```text
+User clicks Tab (<Link href="/wholesaler/orders?status=PENDING">)
+   │
+   ▼
+Next.js Client Router (In-App Soft Navigation)
+   ├─ Updates address bar to ?status=PENDING via history.pushState (no page reload)
+   └─ Requests updated Server Component Payload from backend
+   │
+   ▼
+Next.js App Router Server (Node.js)
+   ├─ 1. Parses URL query string: { status: "PENDING" }
+   ├─ 2. Injects Promise into WholesalerOrdersPage({ searchParams })
+   ├─ 3. Component awaits Promise: const { status } = await searchParams;
+   ├─ 4. Filters data set on server: orders.filter(o => o.status === status)
+   └─ 5. Generates pre-rendered HTML table & React Server Component Payload
+   │
+   ▼
+Browser receives pre-rendered HTML payload
+   ├─ Zero client JavaScript execution for filtering
+   ├─ React reconciles DOM: table updates & active pill moves seamlessly
+   └─ Browser history entry created (Back button works automatically)
+```
+
+#### 4. URL State (`searchParams`) vs. Ephemeral Component State (`useState`)
+
+| Scenario | Client State (`useState`) | Server URL State (`searchParams`) |
+| :--- | :--- | :--- |
+| **Page Refresh (F5)** | ❌ State wiped out; resets back to default "All" tab | ✅ **Preserved**: Reloads the exact filtered view from the URL |
+| **Link Sharing** | ❌ Broken: Sharing `/orders` shows unfiltered data to coworker | ✅ **Shareable**: `/orders?status=PENDING` displays identical view |
+| **Browser History (← / →)** | ❌ Broken: Back button exits the page or does nothing | ✅ **Works**: Steps backward through previously viewed filter tabs |
+| **Bookmarking** | ❌ Cannot bookmark a specific tab or filtered queue | ✅ **Works**: Direct bookmarking of any filtered view |
+| **Client Bundle Size** | ❌ Ships filter functions, state logic, and arrays to browser | ✅ **0 KB**: All filtering and markup generated on the server |
+| **Backend Integration** | ❌ Sends large datasets to browser for client filtering | ✅ **Scalable**: Queries only matching rows at the database level |
+
+#### 5. Architectural Rule of Thumb
+> If a user would ever want to refresh the page, share the link, or press the browser back button and see the same view, store that state in the URL (`searchParams`), not in `useState`.
+
+---
+
 ## 4. File Locations, Responsibilities & Snippets
 
 ### 1. Root Layout
@@ -987,14 +1118,25 @@ Do **not** add `"use client"` or path-checking hooks to `Footer.tsx`. Instead, k
 
 ### 17. Wholesaler Orders Page
 - **Location**: `src/app/wholesaler/orders/page.tsx`
-- **What it does**: Order management dashboard for wholesalers to track incoming retailer orders.
+- **What it does**: Async React Server Component (zero client JavaScript bundle) that receives asynchronous `searchParams` (`Promise<{ status?: string }>`) directly from Next.js, filters order records on the server, and renders status filter links with a responsive order tracking table.
 - **Key Snippet**:
   ```tsx
-  export default function WholesalerOrdersPage() {
+  interface PageProps {
+    searchParams: Promise<{ status?: string }>;
+  }
+
+  export default async function WholesalerOrdersPage({ searchParams }: PageProps) {
+    const { status } = await searchParams;
+    const currentStatus = (status || "ALL").toUpperCase();
+
+    const filteredOrders = currentStatus === "ALL"
+      ? MOCK_ORDERS
+      : MOCK_ORDERS.filter((order) => order.status === currentStatus);
+
     return (
       <div className="p-8">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Orders</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage and track incoming retailer orders.</p>
+        <h1 className="text-2xl font-bold">Orders</h1>
+        {/* Render filteredOrders in server-rendered data table */}
       </div>
     );
   }
