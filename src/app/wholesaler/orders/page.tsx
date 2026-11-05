@@ -122,16 +122,12 @@ export default async function WholesalerOrdersPage({ searchParams }: PageProps) 
         return matchesStatus && matchesQuery && matchesDate;
     });
     return (
-        <div className="mx-auto w-full max-w-6xl px-6 py-10">
+        <div className="mx-auto w-full p-6">
             {/* Page Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
-                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs font-semibold text-neutral-800 dark:text-neutral-200 mb-2">
-                        <ShoppingBag className="w-3.5 h-3.5" />
-                        <span>Order Management</span>
-                    </div>
                     <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
-                        Orders
+                        Order Management
                     </h1>
                     <p className="text-sm text-muted-foreground mt-1">
                         Track and manage wholesale orders placed by your retail network.

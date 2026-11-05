@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Package, Users, DollarSign } from "lucide-react";
+import { Package, Users, DollarSign } from "lucide-react";
 import StatCard from "@/components/dashboard/StateCard";
 
 export default function WholesalerDashboardPage() {
@@ -25,16 +25,12 @@ export default function WholesalerDashboardPage() {
     ];
 
     return (
-        <div className="mx-auto w-full max-w-6xl px-6 py-10">
+        <div className="mx-auto w-full p-6">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
-                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs font-semibold text-neutral-800 dark:text-neutral-200 mb-2">
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span>Wholesaler Portal</span>
-                    </div>
                     <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-neutral-100">
-                        Business Dashboard
+                        Wholesaler Dashboard
                     </h1>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
                         Monitor inventory, dispatch logistics, and retailer order requests.
