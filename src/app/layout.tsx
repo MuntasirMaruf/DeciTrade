@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
+import Script from "next/script";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,8 +27,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <head>
-        <script
+      <body className="min-h-full flex flex-col">
+        {/* Next.js automatically hoists this beforeInteractive script into the real <head> */}
+        <Script
+          id="theme-script"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               try {
@@ -40,8 +44,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             `,
           }}
         />
-      </head>
-      <body className="min-h-full flex flex-col">
         {/* <Header /> */}
         <main className="flex flex-1 flex-col">{children}</main>
         {/* <Footer /> */}

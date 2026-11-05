@@ -366,7 +366,7 @@ Register CSS variables into Tailwind's utility generation engine:
 
 #### 4. Zero-Blink Theme Synchronization Architecture
 - **Eliminating Hydration Pop-In**: Traditional client-only mounting patterns (e.g. `if (!mounted) return <Button className="opacity-0">`) cause a visible flicker on browser refresh while React hydrates.
-- **Synchronous `<head>` Script (`src/app/layout.tsx`)**: Placing an inline `<script>` directly in `<head>` executes synchronously before the browser paints the document, attaching the `.dark` class to `<html>` prior to the first pixel render.
+- **Synchronous Script Injection (`src/app/layout.tsx`)**: Utilizes Next.js's `<Script id="theme-script" strategy="beforeInteractive">` to hoist the theme resolution script into the document `<head>` during server-side compilation, attaching the `.dark` class to `<html>` prior to the first pixel render without triggering React 19 component warnings.
 - **Default Theme Resolution (First-Time Visitors)**: When a visitor has never clicked the toggle, `localStorage.theme` is empty (`!('theme' in localStorage)`). The system resolves the default dynamically from the visitor's operating system setting via `window.matchMedia('(prefers-color-scheme: dark)').matches`. If no `.dark` class is attached, `:root` in `globals.css` provides the baseline light tokens.
 - **Storage Persistence**: Theme state is written to storage only upon explicit user action inside `ThemeToggle.tsx` (`localStorage.setItem('theme', isDark ? 'dark' : 'light')`). Subsequent reloads read this key to override OS settings.
 - **`suppressHydrationWarning` on `<html>`**: Prevents Next.js console warnings when the inline script modifies `<html class="dark">` before React completes hydration.
@@ -945,6 +945,122 @@ When the user clicks "Create account" in `src/app/(auth)/registration/page.tsx`:
 3. React 19 handles the asynchronous return: `setIsLoading(false)` and `setIsSuccess(true)`.
 4. The registration form unmounts, and the page renders the green success card directing the user to Step 2 (`/onboarding`).
 
+##### Deep Dive: The Supabase Session Cookie Architecture (`sb-<project-ref>-auth-token`)
+
+###### 1. Where and How the Cookie is Born (`src/app/(auth)/registration/page.tsx`)
+When the user submits the registration form, the `@supabase/ssr` browser client issues the sign-up call and immediately writes the returned session to `document.cookie`:
+
+```tsx
+// Location: src/app/(auth)/registration/page.tsx (Inside handleSubmit)
+const supabase = createClient();
+const { data, error: signUpError } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+        data: {
+            role: selectedRole,
+            business_name: businessName,
+            phone_number: phone,
+        },
+    },
+});
+
+// Under the hood, @supabase/ssr intercepts the HTTP 200 response and executes:
+// document.cookie = "sb-<project-ref>-auth-token=<base64-json>; path=/; max-age=31536000; SameSite=Lax";
+```
+
+###### 2. What is Stored in the Browser Cookie (`document.cookie`)
+The resulting cookie payload stored under `sb-<project-ref>-auth-token` contains the session tokens and basic identity claims:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "gAAAAABn...random_opaque_string",
+  "expires_at": 1793895600,
+  "user": {
+    "id": "e4b2d1c0-789a-4bc1-9012-3456789abcde",
+    "aud": "authenticated",
+    "role": "authenticated",
+    "email": "wholesaler@example.com",
+    "user_metadata": {
+      "role": "WHOLESALER",
+      "business_name": "Apex Wholesale Ltd",
+      "phone_number": "+8801712345678"
+    },
+    "app_metadata": {
+      "provider": "email",
+      "providers": ["email"]
+    }
+  }
+}
+```
+
+- **`access_token`**: Short-lived signed JWT sent in the `Authorization: Bearer <token>` header to prove identity (`sub = user.id`) to PostgreSQL RLS policies (`auth.uid() = id`).
+- **`refresh_token`**: Opaque string used by `@supabase/ssr` to automatically reissue access tokens upon expiration without forcing user re-authentication.
+- **`user.email` vs. `user.user_metadata`**:
+  - `user.email`: Primary auth credential, natively managed by GoTrue at the top level of `user`.
+  - `user.user_metadata`: Custom application metadata passed via `options.data` during registration (`role`, `business_name`, `phone_number`), enabling downstream views to access these attributes without an immediate database query.
+
+###### 3. Separation of Concerns: Cookies vs. Database Tables
+- **Cookie Boundary (4KB Limit & Stale State Prevention)**: The cookie strictly stores the authentication session. It **never** stores domain tables (`warehouse_address`, product listings, orders, invoices). Storing relational entities in cookies causes header bloat, exceeds browser cookie limits (4KB per domain), and results in stale data when records update on the server.
+- **PostgreSQL Tables (Relational Truth)**: Domain entities reside strictly in PostgreSQL (`public.profiles`, `public.wholesalers`, `public.retailers`).
+
+###### 4. How the Onboarding Page Accesses and Consumes the Cookie (`src/app/(auth)/onboarding/page.tsx`)
+When the user arrives at `/onboarding`, the page reads the session cookie to determine user identity, auto-selects their role form, and submits business data to the database using `user.id`:
+
+```tsx
+// Location: src/app/(auth)/onboarding/page.tsx
+
+// A. Reading the session cookie on mount to auto-detect identity & role
+useEffect(() => {
+    const supabase = createClient();
+    async function checkUser() {
+        // Reads JWT directly from document.cookie and verifies with Supabase
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) {
+            router.push("/login");
+            return;
+        }
+
+        setUserId(user.id);
+        // Extracts role from the cookie's user_metadata (no DB round-trip needed)
+        const registeredRole = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+        setRole(registeredRole);
+        setIsCheckingAuth(false);
+    }
+
+    checkUser();
+}, [router]);
+
+// B. Submitting business setup using the verified user ID
+async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!userId) return;
+
+    const formData = new FormData(e.currentTarget);
+    const supabase = createClient();
+
+    if (isWholesaler) {
+        // Updates public.wholesalers WHERE id = userId
+        // PostgreSQL RLS enforces: USING (auth.uid() = id)
+        const { error } = await supabase
+            .from("wholesalers")
+            .update({
+                warehouse_address: (formData.get("warehouse_address") as string).trim(),
+                description: (formData.get("description") as string).trim() || null,
+                trade_license_number: (formData.get("trade_license_number") as string).trim() || null,
+            })
+            .eq("id", userId);
+    }
+}
+```
+
+###### 5. Verifying Session Cookies in Browser DevTools
+Developers can inspect the active session token:
+1. Open Browser DevTools (`F12` or `Ctrl + Shift + I`).
+2. Navigate to **Application** &rarr; **Storage** &rarr; **Cookies** &rarr; `http://localhost:3000`.
+3. Inspect the cookie prefixed with `sb-<project-ref>-auth-token`.
+
 #### 3. The PostgreSQL Automated User Trigger (`handle_new_user`)
 Rather than relying on client-side JavaScript to execute multiple separate `INSERT` statements across network hops, a PostgreSQL `SECURITY DEFINER` trigger guarantees atomic profile creation inside the database engine:
 
@@ -1059,29 +1175,39 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 
 ### 1. Root Layout
 - **Location**: `src/app/layout.tsx`
-- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), executes early synchronous theme determination in `<head>` to prevent FOUC, and establishes the application shell with `<main className="flex flex-1 flex-col">`.
+- **What it does**: Defines global HTML, imports Google fonts (`Geist`), loads Tailwind CSS (`globals.css`), executes early theme determination via Next.js `<Script strategy="beforeInteractive">` to prevent FOUC, and establishes the application shell with `<main className="flex flex-1 flex-col">`.
 - **Key Snippet**:
   ```tsx
-  <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
-    <head>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            try {
-              if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
-              } else {
-                document.documentElement.classList.remove('dark');
-              }
-            } catch (_) {}
-          `,
-        }}
-      />
-    </head>
-    <body className="min-h-full flex flex-col">
-      <main className="flex flex-1 flex-col">{children}</main>
-    </body>
-  </html>
+  import Script from "next/script";
+
+  export default function RootLayout({ children }: LayoutProps<"/">) {
+    return (
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      >
+        <body className="min-h-full flex flex-col">
+          <Script
+            id="theme-script"
+            strategy="beforeInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+                try {
+                  if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.add('dark');
+                  } else {
+                    document.documentElement.classList.remove('dark');
+                  }
+                } catch (_) {}
+              `,
+            }}
+          />
+          <main className="flex flex-1 flex-col">{children}</main>
+        </body>
+      </html>
+    );
+  }
   ```
 
 ---
@@ -1336,7 +1462,10 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
     return;
   }
   setIsLoading(false);
-  setIsSuccess(true);
+  const targetDashboard = selectedRole === "WHOLESALER"
+    ? "/wholesaler/dashboard"
+    : "/retailer/dashboard";
+  router.push(targetDashboard);
   ```
 
 ---
@@ -1345,16 +1474,37 @@ To bridge this runtime divide without session desynchronization, `@supabase/ssr`
 - **Location**: `src/app/(auth)/onboarding/page.tsx`
 - **What it does**:
   - Step 2 in funnel: "Business Setup" with 2-step progress stepper (`1. Account Created` &rarr; `2. Business Setup`).
-  - Conditionally renders role-specific inputs (Wholesaler warehouse vs. Retailer store delivery).
-  - Provides a declarative "Sign out and finish later" link to `/login`.
+  - Reads authenticated user session via `supabase.auth.getUser()`, automatically detecting `user.id` and `user.user_metadata.role` (`WHOLESALER` vs. `RETAILER`).
+  - Automatically redirects unauthenticated visitors to `/login`.
+  - Conditionally renders role-specific inputs and updates `public.wholesalers` (`warehouse_address`, `description`, `trade_license_number`) or `public.retailers` (`delivery_address`, `shop_category`, `trade_license_number`) using PostgreSQL RLS `auth.uid() = id`.
+  - On completion, renders direct entry CTA into role-specific dashboard (`/wholesaler/dashboard` or `/retailer/dashboard`).
 - **Key Snippet**:
   ```tsx
-  {isWholesaler ? (
-    <textarea id="warehouse_address" name="warehouse_address" required />
-  ) : (
-    <textarea id="delivery_address" name="delivery_address" required />
-  )}
-  <Link href="/login">Sign out and finish later</Link>
+  const { data: { user } } = await supabase.auth.getUser();
+  if (isWholesaler) {
+    await supabase
+      .from("wholesalers")
+      .update({
+        warehouse_address: warehouseAddress,
+        description: description || null,
+        trade_license_number: tradeLicense || null,
+      })
+      .eq("id", user.id);
+  } else {
+    await supabase
+      .from("retailers")
+      .update({
+        delivery_address: deliveryAddress,
+        shop_category: shopCategory || null,
+        trade_license_number: tradeLicense || null,
+      })
+      .eq("id", user.id);
+  }
+  setIsLoading(false);
+  const targetDashboard = isWholesaler
+    ? "/wholesaler/dashboard"
+    : "/retailer/dashboard";
+  router.push(targetDashboard);
   ```
 
 ---

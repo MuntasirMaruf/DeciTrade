@@ -16,11 +16,12 @@ import {
 } from "lucide-react";
 import { EMAIL_REGEX, PASSWORD_REGEX, PHONE_REGEX } from "@/lib/validator";
 import { createClient } from "@/utils/supabase/client";
-import router from "next/router";
+import { useRouter } from "next/navigation";
 
 type UserRole = "WHOLESALER" | "RETAILER";
 
 export default function RegistrationPage() {
+    const router = useRouter();
     const [selectedRole, setSelectedRole] = useState<UserRole>("WHOLESALER");
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -91,7 +92,13 @@ export default function RegistrationPage() {
         }
 
         setIsLoading(false);
-        router.push("/onboarding/");
+
+        // Dynamic Role-Based Redirection:
+        const targetDashboard = selectedRole === "WHOLESALER"
+            ? "/wholesaler/dashboard"
+            : "/retailer/dashboard";
+
+        router.push(targetDashboard);
     }
 
     return (

@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 import {
     Building2,
     Store,
@@ -25,22 +27,94 @@ const SHOP_CATEGORIES = [
 ];
 
 export default function OnboardingPage() {
+    const router = useRouter();
+    const [userId, setUserId] = useState<string | null>(null);
+    const [isCheckingAuth, setIsCheckingAuth] = useState(true);
     const [role, setRole] = useState<"WHOLESALER" | "RETAILER">("WHOLESALER");
     const isWholesaler = role === "WHOLESALER";
-
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [isSuccess, setIsSuccess] = useState(false);
 
+    // 1. Auto-detect user session and pre-fill their registered role
+    useEffect(() => {
+        const supabase = createClient();
+        async function checkUser() {
+            const { data: { user }, error: authError } = await supabase.auth.getUser();
+            if (authError || !user) {
+                // If not logged in, redirect to login
+                router.push("/login");
+                return;
+            }
+            setUserId(user.id);
+            // Auto-select role from user metadata
+            const registeredRole = (user.user_metadata?.role as "WHOLESALER" | "RETAILER") || "WHOLESALER";
+            setRole(registeredRole);
+            setIsCheckingAuth(false);
+        }
+        checkUser();
+    }, [router]);
+    // 2. Submit business setup to public.wholesalers or public.retailers
     async function handleSubmit(e: React.SubmitEvent<HTMLFormElement>) {
         e.preventDefault();
+        if (!userId) return;
         setError(null);
         setIsLoading(true);
+        const formData = new FormData(e.currentTarget);
+        const supabase = createClient();
+        if (isWholesaler) {
+            const warehouseAddress = (formData.get("warehouse_address") as string).trim();
+            const description = (formData.get("description") as string).trim();
+            const tradeLicenseNumber = (formData.get("trade_license_number") as string).trim();
+            if (!warehouseAddress) {
+                setError("Warehouse / Dispatch Address is required.");
+                setIsLoading(false);
+                return;
+            }
+            const { error: updateError } = await supabase
+                .from("wholesalers")
+                .update({
+                    warehouse_address: warehouseAddress,
+                    description: description || null,
+                    trade_license_number: tradeLicenseNumber || null,
+                })
+                .eq("id", userId);
+            if (updateError) {
+                setError(updateError.message);
+                setIsLoading(false);
+                return;
+            }
+        } else {
+            const deliveryAddress = (formData.get("delivery_address") as string).trim();
+            const shopCategory = (formData.get("shop_category") as string).trim();
+            const tradeLicenseNumber = (formData.get("trade_license_number") as string).trim();
+            if (!deliveryAddress) {
+                setError("Store Delivery Address is required.");
+                setIsLoading(false);
+                return;
+            }
+            const { error: updateError } = await supabase
+                .from("retailers")
+                .update({
+                    delivery_address: deliveryAddress,
+                    shop_category: shopCategory || null,
+                    trade_license_number: tradeLicenseNumber || null,
+                })
+                .eq("id", userId);
+            if (updateError) {
+                setError(updateError.message);
+                setIsLoading(false);
+                return;
+            }
+        }
 
-        // Simulate saving business details
-        await new Promise((resolve) => setTimeout(resolve, 1000));
         setIsLoading(false);
-        setIsSuccess(true);
+
+        // Send user to their role-specific dashboard:
+        const targetDashboard = isWholesaler
+            ? "/wholesaler/dashboard"
+            : "/retailer/dashboard";
+
+        router.push(targetDashboard);
     }
 
     return (
@@ -74,19 +148,6 @@ export default function OnboardingPage() {
                     </p>
                 </div>
             </div>
-
-            {isSuccess && (
-                <div className="mb-5 p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
-                    <p className="font-semibold text-sm">Profile setup complete!</p>
-                    <p>Your business dashboard is ready.</p>
-                    <Link
-                        href="/"
-                        className="inline-block bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 px-3 py-1.5 rounded font-semibold text-xs"
-                    >
-                        Enter Platform &rarr;
-                    </Link>
-                </div>
-            )}
 
             {/* Role Toggle Selector */}
             <div className="mb-4 flex gap-2">
