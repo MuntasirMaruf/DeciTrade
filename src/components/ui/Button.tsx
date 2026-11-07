@@ -2,7 +2,7 @@ import React from "react";
 import { Loader2 } from "lucide-react";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive" | "subtle";
+    variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive" | "tinted";
     size?: "sm" | "md" | "lg" | "icon";
     fullWidth?: boolean;
     isLoading?: boolean;
@@ -37,7 +37,7 @@ export default function Button({
         destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
         outline: "border border-input bg-background text-foreground hover:bg-secondary",
         ghost: "border border-border text-muted-foreground hover:text-foreground hover:bg-secondary",
-        subtle: "border border-current/30 bg-current/10 hover:bg-current/20 transition-colors",
+        tinted: "border border-current/30 bg-current/10 hover:bg-current/20 transition-colors",
     };
 
     const widthStyle = fullWidth ? "w-full" : "";

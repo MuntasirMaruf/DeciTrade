@@ -36,15 +36,6 @@ export default function WholesalerDashboardPage() {
                         Monitor inventory, dispatch logistics, and retailer order requests.
                     </p>
                 </div>
-
-                <div>
-                    <Link
-                        href="/"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shadow-sm"
-                    >
-                        <span>Back to Home</span>
-                    </Link>
-                </div>
             </div>
 
             {/* Clean Metrics Grid using our extracted component */}

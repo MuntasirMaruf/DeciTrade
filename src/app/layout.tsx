@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Footer from "@/components/layout/Footer";
 import Header from "@/components/layout/Header";
-import Script from "next/script";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,9 +28,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         {/* Next.js automatically hoists this beforeInteractive script into the real <head> */}
-        <Script
+        <script
           id="theme-script"
-          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `
               try {

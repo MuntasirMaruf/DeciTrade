@@ -40,15 +40,6 @@ export default function RetailerDashboardPage() {
                         Browse wholesale catalogs, track shipments, and manage store replenishment.
                     </p>
                 </div>
-
-                <div>
-                    <Link
-                        href="/"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shadow-sm"
-                    >
-                        <span>Back to Home</span>
-                    </Link>
-                </div>
             </div>
 
             {/* Metrics Grid using reusable StatCard */}

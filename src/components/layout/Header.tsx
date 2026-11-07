@@ -55,13 +55,13 @@ export default async function Header() {
                     <form action={handleSignOut}>
                         <Button
                             type="submit"
-                            variant="subtle"
+                            variant="tinted"
                             size="sm"
-                            title="Sign out"
+                            title="Log out"
                             className="text-destructive"
                         >
                             <LogOut className="h-3.5 w-3.5" />
-                            <span className="hidden sm:inline">Sign Out</span>
+                            <span className="hidden sm:inline">Log Out</span>
                         </Button>
                     </form>
                 </div>

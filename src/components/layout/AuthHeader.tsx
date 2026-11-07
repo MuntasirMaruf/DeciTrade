@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import BackButton from "../ui/BackButton";
 
 export default function AuthHeader() {
     return (
@@ -19,13 +20,7 @@ export default function AuthHeader() {
                 {/* Right side: Theme Toggle & Back link */}
                 <div className="flex items-center gap-4">
                     <ThemeToggle />
-                    <Link
-                        href="/"
-                        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        <ArrowLeft className="w-4 h-4" />
-                        <span>Back to Home</span>
-                    </Link>
+                    <BackButton />
                 </div>
             </div>
         </header>

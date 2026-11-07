@@ -1,7 +1,18 @@
 import Link from "next/link";
 import ThemeToggle from "@/components/ui/ThemeToggle";
+import { createClient } from "@/utils/supabase/server";
+import Button from "../ui/Button";
+import { LayoutDashboard } from "lucide-react";
 
-export default function SiteHeader() {
+export default async function SiteHeader() {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+    // Identify registered role and target dashboard route
+    const role = user?.user_metadata?.role as "WHOLESALER" | "RETAILER" | undefined;
+    const dashboardHref = role === "RETAILER" ? "/retailer/dashboard" : "/wholesaler/dashboard";
+
     return (
         <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
             <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
@@ -15,21 +26,32 @@ export default function SiteHeader() {
                     </span>
                 </Link>
 
-                {/* Right Actions: Theme Toggle, Sign In & Register */}
+                {/* Right Actions: Theme Toggle, Dashboard OR (Sign In & Register) */}
                 <div className="flex items-center gap-4">
                     <ThemeToggle />
-                    <Link
-                        href="/login"
-                        className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                        Sign In
-                    </Link>
-                    <Link
-                        href="/registration"
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90 transition-opacity shadow-sm"
-                    >
-                        Register
-                    </Link>
+
+                    {user ? (
+                        <Link href={dashboardHref}>
+                            <Button size="sm" variant="outline">
+                                <LayoutDashboard className="w-4 h-4" />
+                                <span>Go to Dashboard</span>
+                            </Button>
+                        </Link>
+                    ) : (
+                        <>
+                            <Link
+                                href="/login"
+                                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                Sign In
+                            </Link>
+                            <Link href="/registration">
+                                <Button size="sm">
+                                    Register
+                                </Button>
+                            </Link>
+                        </>
+                    )}
                 </div>
             </div>
         </header>
