@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
 import ThemeToggle from "../ui/ThemeToggle";
 import { createClient } from "@/utils/supabase/server";
+import Button from "../ui/Button";
 
 export default async function Header() {
     const supabase = await createClient();
@@ -37,31 +38,31 @@ export default async function Header() {
 
                 {/* Right Actions: Theme Toggle, Profile Greeting, Role Badge & Sign Out */}
                 <div className="flex items-center gap-4">
-                    <ThemeToggle />
-
-                    {/* Dynamic Greeting & Role Pill */}
-                    <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground hidden sm:inline">Hi,</span>
+                    <div className="flex flex-col items-center gap-2 text-sm">
                         <span className="font-semibold text-header-foreground">
                             {userEmail}
                         </span>
                         {role && (
-                            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-normal text-primary">
                                 {role}
                             </span>
                         )}
                     </div>
 
+                    <ThemeToggle />
+
                     {/* Server Action Sign Out */}
                     <form action={handleSignOut}>
-                        <button
+                        <Button
                             type="submit"
+                            variant="subtle"
+                            size="sm"
                             title="Sign out"
-                            className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                            className="text-destructive"
                         >
                             <LogOut className="h-3.5 w-3.5" />
                             <span className="hidden sm:inline">Sign Out</span>
-                        </button>
+                        </Button>
                     </form>
                 </div>
             </div>
