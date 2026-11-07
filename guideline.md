@@ -39,125 +39,65 @@ This document tracks the architecture, component locations, responsibilities, st
 
 
 ```text
-
 deci-trade/
-
 ├── public/                 # Static public assets
-
 ├── src/
-
 │   ├── app/                # App Router: file-system based routing
-
 │   │   ├── (auth)/         # Route Group: omitted from URL
-
 │   │   │   ├── layout.tsx  # Nested layout: renders AuthHeader + centered card
-
 │   │   │   ├── login/
-
 │   │   │   │   └── page.tsx        # Route: /login (Sign In form with regex validation)
-
 │   │   │   ├── registration/
-
 │   │   │   │   └── page.tsx        # Route: /registration (Business type selection & signup)
-
 │   │   │   └── onboarding/
-
 │   │   │       ├── page.tsx        # Route: /onboarding (Server Component: Auth & DB guard with zero-flash redirect)
-
 │   │   │       └── OnboardingForm.tsx # Colocated Client Component (Step 2 business setup form)
-
 │   │   ├── retailer/       # Retailer portal routes
-
 │   │   │   ├── layout.tsx      # Nested layout: renders Header + portal shell
-
 │   │   │   ├── page.tsx        # Route: /retailer (Server redirect to /retailer/dashboard)
-
 │   │   │   └── dashboard/
-
 │   │   │       └── page.tsx    # Route: /retailer/dashboard (RSC Retailer metrics)
-
 │   │   ├── wholesaler/     # Wholesaler portal routes
-
 │   │   │   ├── layout.tsx      # Nested layout: renders Header + WholesalerSidebar + portal shell
-
 │   │   │   ├── page.tsx        # Route: /wholesaler (Server redirect to /wholesaler/dashboard)
-
 │   │   │   ├── dashboard/
-
 │   │   │   │   └── page.tsx    # Route: /wholesaler/dashboard (RSC Wholesaler metrics)
-
 │   │   │   ├── orders/
-
 │   │   │   │   └── page.tsx    # Route: /wholesaler/orders (Incoming retailer orders)
-
 │   │   │   └── inventory/
-
 │   │   │       └── page.tsx    # Route: /wholesaler/inventory (Warehouse catalog & stock)
-
 │   │   ├── favicon.ico
-
 │   │   ├── globals.css     # Global styles & Tailwind configuration
-
 │   │   ├── layout.tsx      # Root layout: <main> + Footer
-
 │   │   └── page.tsx        # Homepage route: / (renders SiteHeader + Hero)
-
 │   ├── components/         # Reusable React components
-
 │   │   ├── dashboard/      # Portal & analytics components
-
 │   │   │   ├── StateCard.tsx       # Reusable metric card with TypeScript props
-
 │   │   │   ├── OrderSearch.tsx     # Leaf Client Component search input with URL synchronization
-
 │   │   │   └── OrderDateFilter.tsx # Leaf Client Component date filter with single chevron trigger
-
 │   │   ├── layout/         # Persistent structural components
-
 │   │   │   ├── SiteHeader.tsx  # Public navbar with logo badge & auth CTAs
-
-│   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & "Back to website"
-
+│   │   │   ├── AuthHeader.tsx  # Dedicated auth navbar with logo & BackButton
 │   │   │   ├── Header.tsx      # Authenticated portal navbar with profile, role pill & sign out
-
 │   │   │   ├── OnboardingBanner.tsx # Pinned server-baked alert for incomplete business profile
-
 │   │   │   ├── WholesalerSidebar.tsx # Pinned navigation sidebar with route-aware active state
-
 │   │   │   └── Footer.tsx      # Global footer with dynamic year & links
-
 │   │   └── ui/             # Reusable design system primitives
-
+│   │       ├── BackButton.tsx  # Leaf Client Component back button with browser history navigation
 │   │       ├── Button.tsx      # Reusable button with variants and loading state
-
 │   │       └── ThemeToggle.tsx # Client-side theme toggle with localStorage persistence
-
 │   ├── lib/                # Shared utilities & validators
-
 │   │   └── validator.ts    # Centralized regex patterns (Email, Password, Phone)
-
 │   ├── utils/              # Third-party SDK & client initializations
-
-│   │   └── supabase/
-
-│   │       ├── client.ts   # Browser Client for Client Components (@supabase/ssr)
-
-│   │       ├── proxy.ts    # Session refresh & cookie synchronization helper (@supabase/ssr)
-
-│   │       └── server.ts   # Server Client for Server Components & Actions (@supabase/ssr)
-
-│   └── proxy.ts            # Next.js 16 Proxy route guard & session updater (replaces deprecated middleware.ts)
-
-├── b2b_wholesale_architecture_plan.md # Architectural blueprint & hybrid pattern specification
-
-├── supabase_schema.sql     # Complete PostgreSQL DDL (10 ENUMs, 14 tables, triggers, RLS)
-
-├── guideline.md            # Living architecture & implementation documentation
-
-├── package.json
-
+│   │   └── supabase/       # Supabase client singletons & session synchronization
+│   │       ├── client.ts       # Browser Client singleton for Client Components
+│   │       ├── server.ts       # Server Client factory for Server Components & Actions
+│   │       └── proxy.ts        # Proxy Client for session token refresh in Proxy interceptor
+│   └── proxy.ts            # Next.js 16 Proxy: session refresh & unauthenticated redirect
+├── supabase_schema.sql     # Database DDL: enums, tables, RLS policies, trigger functions
+├── guideline.md            # Living architecture & implementation reference
+├── package.json            # Dependencies & scripts
 └── tsconfig.json           # Path alias (@/* -> ./src/*)
-
 ```
 
 
@@ -744,89 +684,55 @@ Registered directly in `src/app/globals.css`:
 
 When building reusable UI primitives (e.g. `src/components/ui/Button.tsx`):
 
-
-
 #### 1. Interface Inheritance (`extends React.ButtonHTMLAttributes<HTMLButtonElement>`)
-
 Instead of manually defining props for `type`, `disabled`, `onClick`, `aria-label`, etc., extending native attributes inherits all standard HTML attributes with strict compile-time typing and IDE autocomplete:
 
 ```tsx
-
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-
-  variant?: "primary" | "secondary" | "outline";
-
+  variant?: "primary" | "secondary" | "destructive" | "outline" | "ghost" | "tinted";
   size?: "sm" | "md" | "lg" | "icon";
-
   fullWidth?: boolean;
-
   isLoading?: boolean;
-
 }
-
 ```
 
-
-
 #### 2. Rest Parameters (`...props`) & Spread Operator (`{...props}`)
-
 - **Rest Parameter**: `function Button({ children, variant, size, fullWidth, isLoading, ...props }: ButtonProps)` unpacks custom props into local variables and bundles all remaining attributes into a `props` object.
-
 - **JSX Spread**: `<button {...props}>` forwards every attribute (`type="submit"`, `id`, `onClick`, `form`) directly onto the DOM `<button>` element.
 
-
-
 #### 3. HTML Button Type Semantics
-
 - **Inside `<form>` (Default Behavior)**: According to the HTML specification, any `<button>` inside a `<form>` without an explicit `type` defaults to `type="submit"`. Clicking it triggers form submission.
-
 - **Form Cancellation / Steppers**: To create non-submitting action buttons inside a form (e.g., Cancel, Back, Toggle Password), you must explicitly specify `type="button"`.
-
 - **Outside `<form>`**: `<Button onClick={handleClick}>` functions as a standard click action without form submission behavior.
 
-
-
 #### 4. Width Modes (`inline-flex` vs. `fullWidth`) & Sizing
-
 - By default, buttons use `inline-flex w-auto` to hug their content rather than forcing 100% width.
-
 - Forms requiring edge-to-edge submission buttons specify `fullWidth={true}` (`w-full`).
-
 - Sizing variants (`sm`, `md`, `lg`, `icon`) govern padding and dimensions.
 
-
-
 #### 5. Unified Text & Icon Button Architecture
-
-- A single `Button` component handles text buttons, text+icon combos, and square icon-only buttons (`size="icon"` with `h-9 w-9 p-0`). Consolidating these prevents duplicating theme tokens, focus rings, hover states, and disabled handling.
-
+- A single `Button` component handles text buttons, text+icon combos, and square icon-only buttons (`size="icon"` with `h-9 w-9 p-0 aspect-square`). Consolidating these prevents duplicating theme tokens, focus rings, hover states, and disabled handling.
 - **Accessibility Requirement**: Because SVGs have no inner text, icon-only buttons must provide an `aria-label` (e.g. `aria-label="Toggle theme"`) so assistive technologies announce the control's action.
 
-
-
 #### 6. Dynamic Theme Icon Toggling
-
 - **Pure CSS Class Toggling**: Renders both icons and utilizes Tailwind classes to switch visibility instantly without React re-renders or hydration flash:
-
   ```tsx
-
   <Button size="icon" variant="outline" aria-label="Toggle theme">
-
-    <Moon className="w-4 h-4 dark:hidden" />
-
-    <Sun className="w-4 h-4 hidden dark:block" />
-
+    <Moon className="w-4 h-4 text-muted-foreground transition-transform duration-200 -rotate-12 hover:rotate-0 dark:hidden" />
+    <Sun className="w-4 h-4 text-amber-400 transition-transform duration-200 rotate-0 hover:rotate-45 hidden dark:block" />
   </Button>
-
   ```
 
-- **State-Driven Toggling**: Conditionally renders the active icon via React state: `{isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}`.
-
-
+#### 7. Semantic & Chameleon Variant Architecture
+The button primitive defines 6 variants structured for visual hierarchy:
+- **`primary`**: High-priority brand action (`bg-primary text-primary-foreground hover:opacity-90 shadow-sm`).
+- **`secondary`**: Muted surface button for supporting actions (`bg-secondary text-secondary-foreground hover:bg-secondary/80`).
+- **`destructive`**: Critical or destructive actions (`bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm`).
+- **`outline`**: Bordered alternative on canvas background (`border border-input bg-background text-foreground hover:bg-secondary`).
+- **`ghost`**: Neutral borderless button for toolbars and utility menus (`border border-border text-muted-foreground hover:text-foreground hover:bg-secondary`).
+- **`tinted`**: Chameleon variant leveraging `currentColor` (`border border-current/30 bg-current/10 hover:bg-current/20 transition-colors`). When paired with any color utility (e.g., `text-destructive`, `text-amber-600 dark:text-amber-400`, `text-emerald-600`), the 10% surface wash, 30% border stroke, and 20% hover wash synchronize with zero CSS class specificity conflicts.
 
 ---
-
-
 
 ### K. URL State & Educational Prototyping vs. Production Cookie Sessions
 
@@ -2803,288 +2709,167 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 ### 2. Public Site Header
-
 - **Location**: `src/components/layout/SiteHeader.tsx`
-
 - **What it does**: Async React Server Component (RSC) public navbar containing the `DT` brand logo linking to `/`, theme toggle (`<ThemeToggle />`), and dynamic authentication actions. Checks Supabase user session via `createClient()`; if authenticated, renders a "Go to Dashboard" button pointing to the user's role-specific dashboard (`/wholesaler/dashboard` or `/retailer/dashboard`), otherwise renders the "Sign In" link and "Register" `<Button size="sm">`.
-
 - **Key Snippet**:
-
   ```tsx
-
   export default async function SiteHeader() {
-
     const supabase = await createClient();
-
     const { data: { user } } = await supabase.auth.getUser();
 
     const role = user?.user_metadata?.role as "WHOLESALER" | "RETAILER" | undefined;
-
     const dashboardHref = role === "RETAILER" ? "/retailer/dashboard" : "/wholesaler/dashboard";
 
-
-
     return (
-
       <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
-
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-
-          <Link href="/" className="flex items-center gap-3">...</Link>
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black tracking-wider text-header">
+              DT
+            </div>
+            <span className="text-lg font-bold tracking-tight text-header-foreground">
+              DeciTrade
+            </span>
+          </Link>
 
           <div className="flex items-center gap-4">
-
             <ThemeToggle />
-
             {user ? (
-
               <Link href={dashboardHref}>
-
-                <Button size="sm" variant="subtle">
-
+                <Button size="sm" variant="outline">
                   <LayoutDashboard className="w-4 h-4" />
-
                   <span>Go to Dashboard</span>
-
                 </Button>
-
               </Link>
-
             ) : (
-
               <>
-
-                <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground">Sign In</Link>
-
-                <Link href="/registration"><Button size="sm">Register</Button></Link>
-
+                <Link
+                  href="/login"
+                  className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link href="/registration">
+                  <Button size="sm">
+                    Register
+                  </Button>
+                </Link>
               </>
-
             )}
-
           </div>
-
         </div>
-
       </header>
-
     );
-
   }
-
   ```
 
-
-
 ---
-
-
 
 ### 3. Auth Header
-
 - **Location**: `src/components/layout/AuthHeader.tsx`
-
-- **What it does**: Client Component auth navbar displaying the `DT` brand badge, theme toggle (`<ThemeToggle />`), and a dynamic "Back" button that returns the user to whichever page they came from using Next.js `useRouter` (`router.back()`), with a safe fallback to `/` if no history exists in the current session.
-
+- **What it does**: Dedicated auth navbar Server Component displaying the `DT` brand badge linking to `/`, theme toggle (`<ThemeToggle />`), and the `<BackButton />` leaf component using dedicated header design tokens (`border-border`, `bg-header/80`, `text-header-foreground`).
 - **Key Snippet**:
-
   ```tsx
-
-  "use client";
-
-
-
-  import { useRouter } from "next/navigation";
-
-
+  import Link from "next/link";
+  import ThemeToggle from "@/components/ui/ThemeToggle";
+  import BackButton from "../ui/BackButton";
 
   export default function AuthHeader() {
-
-    const router = useRouter();
-
-
-
-    const handleBack = () => {
-
-      if (typeof window !== "undefined" && window.history.length > 1) {
-
-        router.back();
-
-      } else {
-
-        router.push("/");
-
-      }
-
-    };
-
-
-
     return (
-
       <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
-
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-
-          <Link href="/" className="flex items-center gap-3">...</Link>
+          <Link href="/" className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black tracking-wider text-header">
+              DT
+            </div>
+            <span className="text-lg font-bold tracking-tight text-header-foreground">
+              DeciTrade
+            </span>
+          </Link>
 
           <div className="flex items-center gap-4">
-
             <ThemeToggle />
-
-            <button
-
-              type="button"
-
-              onClick={handleBack}
-
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-
-            >
-
-              <ArrowLeft className="w-4 h-4" />
-
-              <span>Back</span>
-
-            </button>
-
+            <BackButton />
           </div>
-
         </div>
-
       </header>
-
     );
-
   }
-
   ```
-
-
 
 ---
 
-
-
 ### 4. Authenticated Portal Header
-
 - **Location**: `src/components/layout/Header.tsx`
-
-- **What it does**: Persistent navbar for authenticated portal layouts (`/wholesaler/*`, `/retailer/*`). Renders brand logo linking to `/`, theme toggle (`<ThemeToggle />`), dynamic user greeting with registered business name or email fallback, role badge (`WHOLESALER` / `RETAILER`), and a zero-client-JS Sign Out form leveraging an inline Server Action (`"use server"`) that calls `supabase.auth.signOut()` and redirects to `/login`.
-
+- **What it does**: Persistent navbar for authenticated portal layouts (`/wholesaler/*`, `/retailer/*`). Renders brand logo linking to `/`, theme toggle (`<ThemeToggle />`), dynamic user greeting with registered business name or email fallback, role badge (`WHOLESALER` / `RETAILER`), and a zero-client-JS Sign Out form leveraging an inline Server Action (`"use server"`) that calls `supabase.auth.signOut()` and redirects to `/login`. Uses `<Button variant="tinted" size="sm" className="text-destructive">` for the sign-out trigger.
 - **Key Snippet**:
-
   ```tsx
-
   import Link from "next/link";
-
   import { redirect } from "next/navigation";
-
   import { LogOut } from "lucide-react";
-
   import ThemeToggle from "../ui/ThemeToggle";
-
   import { createClient } from "@/utils/supabase/server";
-
-
+  import Button from "../ui/Button";
 
   export default async function Header() {
-
     const supabase = await createClient();
-
     const { data: { user } } = await supabase.auth.getUser();
 
-
-
     const businessName =
-
       (user?.user_metadata?.business_name as string) ||
-
       user?.email?.split("@")[0] ||
-
       "Partner";
 
     const role = user?.user_metadata?.role as "WHOLESALER" | "RETAILER" | undefined;
 
-
-
     async function handleSignOut() {
-
       "use server";
-
       const supabase = await createClient();
-
       await supabase.auth.signOut();
-
       redirect("/login");
-
     }
 
-
-
     return (
-
       <header className="sticky top-0 z-50 border-b border-border bg-header/80 backdrop-blur-md">
-
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-
           <Link href="/" className="flex items-center gap-3">
-
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-header-foreground text-xs font-black text-header">DT</div>
-
             <span className="text-lg font-bold text-header-foreground">DeciTrade</span>
-
           </Link>
 
           <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-semibold text-header-foreground">{businessName}</span>
+              {role && (
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  {role}
+                </span>
+              )}
+            </div>
 
             <ThemeToggle />
 
-            <div className="flex items-center gap-2 text-sm">
-
-              <span className="font-semibold text-header-foreground">{businessName}</span>
-
-              {role && (
-
-                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-
-                  {role}
-
-                </span>
-
-              )}
-
-            </div>
-
+            {/* Server Action Sign Out */}
             <form action={handleSignOut}>
-
-              <button type="submit" title="Sign out" className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted cursor-pointer">
-
+              <Button
+                type="submit"
+                variant="tinted"
+                size="sm"
+                title="Log out"
+                className="text-destructive"
+              >
                 <LogOut className="h-3.5 w-3.5" />
-
-                <span className="hidden sm:inline">Sign Out</span>
-
-              </button>
-
+                <span className="hidden sm:inline">Log Out</span>
+              </Button>
             </form>
-
           </div>
-
         </div>
-
       </header>
-
     );
-
   }
-
   ```
 
-
-
 ---
-
-
 
 ### 5. Onboarding Alert Banner
 
@@ -4141,126 +3926,109 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 ### 24. Reusable Button Component
-
 - **Location**: `src/components/ui/Button.tsx`
-
-- **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Uses semantic theme tokens (`primary`, `secondary`, `outline`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and prop spreading (`...props`).
-
+- **What it does**: Reusable design system button extending native HTML button attributes (`React.ButtonHTMLAttributes<HTMLButtonElement>`). Supports 6 semantic and chameleon variants (`primary`, `secondary`, `destructive`, `outline`, `ghost`, `tinted`), size presets (`sm`, `md`, `lg`, `icon`), width modes (`w-auto` vs. `fullWidth`), loading spinner state (`isLoading`), and clean prop spreading (`...props`). The `tinted` variant leverages `currentColor` (`border border-current/30 bg-current/10 hover:bg-current/20`) to create harmonious colored status pills and badges when paired with any `text-*` class with zero CSS collisions.
 - **Key Snippet**:
-
   ```tsx
-
   export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-
-    variant?: "primary" | "secondary" | "outline";
-
+    variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive" | "tinted";
     size?: "sm" | "md" | "lg" | "icon";
-
     fullWidth?: boolean;
-
     isLoading?: boolean;
-
   }
 
-
-
   export default function Button({
-
     children,
-
     variant = "primary",
-
     size = "md",
-
     fullWidth = false,
-
     isLoading = false,
-
     disabled,
-
     className = "",
-
     ...props
-
   }: ButtonProps) {
-
-    const baseStyles = "inline-flex items-center justify-center font-semibold rounded-[var(--radius)] ...";
+    const baseStyles =
+      "inline-flex items-center justify-center font-semibold rounded-[var(--radius)] transition-colors gap-2 shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
 
     const sizeStyles = {
-
       sm: "py-1.5 px-3 text-xs",
-
       md: "py-2.5 px-4 text-sm",
-
       lg: "py-3 px-5 text-base",
-
-      icon: "h-9 w-9 p-0",
-
+      icon: "h-9 w-9 p-0 aspect-square",
     };
 
     const variantStyles = {
-
-      primary: "bg-primary text-primary-foreground hover:opacity-90",
-
-      secondary: "bg-muted text-foreground hover:opacity-80",
-
-      outline: "border border-border text-foreground hover:bg-muted",
-
+      primary: "bg-primary text-primary-foreground hover:opacity-90 shadow-sm",
+      secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+      destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-sm",
+      outline: "border border-input bg-background text-foreground hover:bg-secondary",
+      ghost: "border border-border text-muted-foreground hover:text-foreground hover:bg-secondary",
+      tinted: "border border-current/30 bg-current/10 hover:bg-current/20 transition-colors",
     };
 
-
-
     return (
-
       <button
-
         disabled={disabled || isLoading}
-
-        className={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${fullWidth ? "w-full" : "w-auto"} ${className}`}
-
+        className={`${baseStyles} ${sizeStyles[size]} ${variantStyles[variant]} ${fullWidth ? "w-full" : ""} ${className}`}
         {...props}
-
       >
-
-        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : children}
-
+        {isLoading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>{children}</span>
+          </>
+        ) : (
+          children
+        )}
       </button>
-
     );
-
   }
-
   ```
-
-- **Usage Patterns**:
-
-  - **Full-Width Form Submit**: `<Button type="submit" fullWidth isLoading={isLoading}>Sign In</Button>`
-
-  - **Form Action (Non-submitting)**: `<Button type="button" variant="outline" onClick={handleCancel}>Cancel</Button>`
-
-  - **Square Icon Button (Theme Toggle)**:
-
-    ```tsx
-
-    <Button size="icon" variant="outline" aria-label="Toggle theme">
-
-      <Moon className="w-4 h-4 dark:hidden" />
-
-      <Sun className="w-4 h-4 hidden dark:block" />
-
-    </Button>
-
-    ```
-
-  - **General Action**: `<Button variant="secondary" onClick={handleRefresh}>Refresh</Button>`
-
-
 
 ---
 
+### 25. Reusable Back Button Component
+- **Location**: `src/components/ui/BackButton.tsx`
+- **What it does**: Leaf Client Component providing browser history navigation via Next.js `useRouter` (`router.back()`). Verifies `window.history.length > 1` before triggering history navigation, falling back safely to the specified route (`fallback = "/"`, configurable via props) if visited directly in a fresh tab without session history.
+- **Key Snippet**:
+  ```tsx
+  "use client";
 
+  import { useRouter } from "next/navigation";
+  import { ArrowLeft } from "lucide-react";
 
-### 25. Theme Toggle Component
+  interface BackButtonProps {
+    fallback?: string;
+    className?: string;
+  }
+
+  export default function BackButton({ fallback = "/", className = "" }: BackButtonProps) {
+    const router = useRouter();
+
+    function handleBack() {
+      if (typeof window !== "undefined" && window.history.length > 1) {
+        router.back();
+      } else {
+        router.push(fallback);
+      }
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={handleBack}
+        className={`inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer ${className}`}
+      >
+        <ArrowLeft className="w-4 h-4" />
+        <span>Back</span>
+      </button>
+    );
+  }
+  ```
+
+---
+
+### 26. Theme Toggle Component
 
 - **Location**: `src/components/ui/ThemeToggle.tsx`
 
@@ -4326,7 +4094,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 26. Order Search Component
+### 27. Order Search Component
 
 - **Location**: `src/components/dashboard/OrderSearch.tsx`
 
@@ -4410,7 +4178,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 27. Order Date Filter Component
+### 28. Order Date Filter Component
 
 - **Location**: `src/components/dashboard/OrderDateFilter.tsx`
 
@@ -4510,7 +4278,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 28. Database DDL & RLS Blueprint
+### 29. Database DDL & RLS Blueprint
 
 - **Location**: `supabase_schema.sql`
 
@@ -4570,7 +4338,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 29. Supabase Browser Client Helper
+### 30. Supabase Browser Client Helper
 
 - **Location**: `src/utils/supabase/client.ts`
 
@@ -4608,7 +4376,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 30. Supabase Server Client Helper
+### 31. Supabase Server Client Helper
 
 - **Location**: `src/utils/supabase/server.ts`
 
@@ -4680,7 +4448,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 31. Supabase Proxy Client Helper
+### 32. Supabase Proxy Client Helper
 
 - **Location**: `src/utils/supabase/proxy.ts`
 
@@ -4842,7 +4610,7 @@ In DeciTrade, account onboarding and verification use the **3-State Progressive 
 
 
 
-### 32. Next.js 16 Proxy (Request Interceptor & Route Guard)
+### 33. Next.js 16 Proxy (Request Interceptor & Route Guard)
 
 - **Location**: `src/proxy.ts`
 

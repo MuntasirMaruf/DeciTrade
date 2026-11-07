@@ -29,10 +29,6 @@ export default function RetailerDashboardPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
-                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-muted text-xs font-semibold text-foreground mb-2">
-                        <Store className="w-3.5 h-3.5" />
-                        <span>Retailer Portal</span>
-                    </div>
                     <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
                         Store Dashboard
                     </h1>
