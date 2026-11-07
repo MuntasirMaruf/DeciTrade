@@ -299,71 +299,62 @@ By default, Tailwind v4 only responds to operating system preferences. To allow 
 - **How it works**: Instructs Tailwind's compiler to activate any `dark:...` utility class whenever an ancestor element carries the `.dark` class.
 
 #### 2. Defining Light vs. Dark Design Tokens
-Tokens are declared as CSS variables under `:root` for light mode and overridden under `:root.dark, .dark` for dark mode:
-```css
-/* Light Mode Default */
-:root {
-  --background: #ffffff;
-  --foreground: #09090b;
-  --card: #ffffff;
-  --primary: #18181b;
-  --primary-foreground: #fafafa;
-  --border: #e4e4e7;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --destructive: #ef4444;
+Tokens are declared as CSS variables under `:root` for light mode and overridden under `.dark` for dark mode, categorized into four functional groups:
 
-  /* Header & Navigation */
-  --header-background: #ffffff;
-  --header-foreground: #09090b;
-
-  /* Footer */
-  --footer-background: #fafafa;
-  --footer-foreground: #71717a;
-}
-
-/* Manual .dark Class (Toggled via ThemeToggle & persisted in localStorage) */
-:root.dark,
-.dark {
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #121215;
-  --primary: #fafafa;
-  --primary-foreground: #18181b;
-  --border: #27272a;
-  --muted: #27272a;
-  --muted-foreground: #a1a1aa;
-  --destructive: #f87171;
-
-  /* Header & Navigation */
-  --header-background: #000000;
-  --header-foreground: #fafafa;
-
-  /* Footer */
-  --footer-background: #000000;
-  --footer-foreground: #a1a1aa;
-}
-```
-- **Dual-Trigger Logic**: If the user toggles manually (`<html class="dark">` or `<html class="light">`), the class takes precedence. If no class is set, it falls back to the visitor's OS dark/light setting.
+- **Group A (Typography & Geometry)**: `--font-sans` (`var(--font-geist-sans)`), `--font-mono` (`var(--font-geist-mono)`), `--radius` (`0.5rem`).
+- **Group B (Buttons & Clickable Controls)**:
+  - **Primary CTA**: `--primary` (`#18181b` light / `#fafafa` dark), `--primary-foreground` (`#fafafa` light / `#18181b` dark).
+  - **Secondary Actions**: `--secondary` (`#f4f4f5` light / `#27272a` dark), `--secondary-foreground` (`#18181b` light / `#fafafa` dark).
+  - **Brand / Promo / Accent**: `--accent` (`#10b981` emerald), `--accent-foreground` (`#ffffff`).
+  - **Danger / Destructive**: `--destructive` (`#ef4444` light / `#f87171` dark), `--destructive-foreground` (`#ffffff` light / `#09090b` dark).
+- **Group C (Surfaces, Layout & Passive Text)**:
+  - **Page Canvas**: `--background` (`#ffffff` light / `#09090b` dark), `--foreground` (`#09090b` light / `#fafafa` dark).
+  - **Cards & Containers**: `--card` (`#ffffff` light / `#121215` dark), `--card-foreground` (`#09090b` light / `#fafafa` dark).
+  - **Floating Overlays**: `--popover` (`#ffffff` light / `#121215` dark), `--popover-foreground`.
+  - **Subtle Wells & Disabled States**: `--muted` (`#f4f4f5` light / `#27272a` dark), `--muted-foreground` (`#71717a` light / `#a1a1aa` dark).
+  - **Header & Navigation**: `--header-background` (`#ffffff` light / `#000000` dark), `--header-foreground` (`#09090b` light / `#fafafa` dark).
+  - **Footer**: `--footer-background` (`#fafafa` light / `#000000` dark), `--footer-foreground` (`#71717a` light / `#a1a1aa` dark).
+- **Group D (Borders, Inputs & Focus Rings)**:
+  - **Structural Borders**: `--border` (`#e4e4e7` light / `#27272a` dark) for cards and dividers (`border-border`).
+  - **Interactive & Form Borders**: `--input` (`#e4e4e7` light / `#27272a` dark) for inputs and outline buttons (`border-input`).
+  - **Focus Glow**: `--ring` (`#18181b` light / `#d4d4d8` dark) for keyboard accessibility rings (`focus-visible:ring-ring`).
 
 #### 3. Mapping Tokens to Tailwind Utilities (`@theme inline`)
-Register CSS variables into Tailwind's utility generation engine:
+Registered directly in `src/app/globals.css`:
 ```css
 @theme inline {
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --radius-base: var(--radius);
+
+  /* Button & Interactive Utilities */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Surfaces, Layout & Passive Text */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-border: var(--border);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-  --color-destructive: var(--destructive);
   --color-header: var(--header-background);
   --color-header-foreground: var(--header-foreground);
   --color-footer: var(--footer-background);
   --color-footer-foreground: var(--footer-foreground);
-  --font-sans: var(--font-sans);
+
+  /* Borders & Focus Rings */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 ```
 - **Result**: Generates utility classes (`bg-background`, `text-foreground`, `bg-header`, `text-header-foreground`, `bg-footer`, `text-footer-foreground`) that automatically swap colors when the `.dark` class toggles without requiring React re-renders.

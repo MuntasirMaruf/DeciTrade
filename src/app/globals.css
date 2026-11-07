@@ -5,102 +5,201 @@
 /* Design Tokens: 1. Light Mode (Default)                                     */
 /* -------------------------------------------------------------------------- */
 :root {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --radius: 0.5rem;
+  /* ------------------------------------------------------------------------ */
+  /* GROUP A: TYPOGRAPHY & GEOMETRY                                           */
+  /* ------------------------------------------------------------------------ */
+  --font-sans: var(--font-geist-sans); /* Primary UI font (body, headings, buttons) */
+  --font-mono: var(--font-geist-mono); /* Code blocks, IDs, tabular numbers, prices */
+  --radius: 0.5rem;                    /* Base border-radius (8px) for cards, inputs, buttons */
 
-  /* Main Surface & Base */
-  --background: #ffffff;
-  --foreground: #09090b;
-  --card: #ffffff;
-  --card-foreground: #09090b;
+  /* ------------------------------------------------------------------------ */
+  /* GROUP B: FOR BUTTONS & INTERACTIVE ELEMENTS (Clickable Controls)         */
+  /* Rule: Use these when the user can click/interact with the element now.   */
+  /* ------------------------------------------------------------------------ */
 
-  /* Primary Interactive */
-  --primary: #18181b;
-  --primary-foreground: #fafafa;
+  /* 1. Primary CTA Button (Single most important action: "Save", "Buy Now") */
+  --primary: #18181b;                  /* Button background (bg-primary) */
+  --primary-foreground: #fafafa;       /* High-contrast button text/icons (text-primary-foreground) */
 
-  /* Muted & Secondary Elements */
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
+  /* 2. Secondary Button (Supporting actions next to Primary: "Cancel", "Export") */
+  --secondary: #f4f4f5;                /* Button background (bg-secondary) */
+  --secondary-foreground: #18181b;     /* Crisp, full-contrast text so it looks active (text-secondary-foreground) */
 
-  /* Borders & Inputs */
-  --border: #e4e4e7;
-  --input: #e4e4e7;
+  /* 3. Brand / Promo Button & Active States ("Upgrade", active toggles, badges) */
+  --accent: #10b981;                   /* Emerald brand background (bg-accent) */
+  --accent-foreground: #ffffff;        /* Crisp white text on emerald (text-accent-foreground) */
 
-  /* Brand Accent & Feedback */
-  --accent: #10b981;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
+  /* 4. Danger / Destructive Button (Permanent, high-risk actions: "Delete", "Remove") */
+  --destructive: #ef4444;              /* Red button bg, or error input border/text (bg-destructive) */
+  --destructive-foreground: #ffffff;   /* Readable white text on red buttons (text-destructive-foreground) */
 
-  /* Header & Navigation */
-  --header-background: #ffffff;
-  --header-foreground: #09090b;
+  /* ------------------------------------------------------------------------ */
+  /* GROUP C: NOT FOR BUTTONS (Surfaces, Layout Chrome & Passive Text)        */
+  /* Rule: Never use these as active button backgrounds/text.                 */
+  /* ------------------------------------------------------------------------ */
 
-  /* Footer */
-  --footer-background: #fafafa;
-  --footer-foreground: #71717a;
+  /* 1. Page Canvas (Root <body> background and default paragraph/heading text) */
+  --background: #ffffff;               /* Main page background (bg-background) */
+  --foreground: #09090b;               /* Default primary body text (text-foreground) */
+
+  /* 2. Cards & Containers (Product cards, dashboard panels, bento boxes) */
+  --card: #ffffff;                     /* Card surface background (bg-card) */
+  --card-foreground: #09090b;          /* Text inside cards (text-card-foreground) */
+
+  /* 3. Floating Overlays (Dropdown menus, modals, date-pickers, tooltips) */
+  --popover: #ffffff;                  /* Floating surface above cards (bg-popover) */
+  --popover-foreground: #09090b;       /* Text inside floating overlays (text-popover-foreground) */
+
+  /* 4. Passive & Disabled States (Captions, timestamps, skeletons, disabled buttons) */
+  --muted: #f4f4f5;                    /* Subtle wells, code blocks, disabled button bg (bg-muted) */
+  --muted-foreground: #71717a;         /* De-emphasized text: "2 mins ago", placeholders (text-muted-foreground) */
+
+  /* 5. Layout Chrome (Top Navigation Bar & Bottom Site Footer) */
+  --header-background: #ffffff;        /* Top navbar surface (bg-header) */
+  --header-foreground: #09090b;        /* Navbar links and icons (text-header-foreground) */
+  --footer-background: #fafafa;        /* Bottom footer surface (bg-footer) */
+  --footer-foreground: #71717a;        /* Footer links and copyright text (text-footer-foreground) */
+
+  /* 6. Borders, Form Inputs & Accessibility Focus Rings */
+  --border: #e4e4e7;                   /* Card borders, section dividers (border-border) */
+  --input: #e4e4e7;                    /* Textbox/select borders & Outline button borders (border-input) */
+  --ring: #18181b;                     /* Keyboard tab focus glow (focus-visible:ring-ring) */
 }
 
-/* -------------------------------------------------------------------------- */
-/* Design Tokens: 2. Dark Mode (.dark class)                                  */
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* 2. DARK MODE DESIGN TOKENS (.dark class)                                   */
+/* ========================================================================== */
 .dark {
-  /* Main Surface & Base */
-  --background: #09090b;
-  --foreground: #fafafa;
-  --card: #121215;
-  --card-foreground: #fafafa;
+  /* ------------------------------------------------------------------------ */
+  /* GROUP B: FOR BUTTONS & INTERACTIVE ELEMENTS (Clickable Controls)         */
+  /* ------------------------------------------------------------------------ */
 
-  /* Primary Interactive */
-  --primary: #fafafa;
-  --primary-foreground: #18181b;
+  /* 1. Primary CTA Button */
+  --primary: #fafafa;                  /* High-contrast white button background */
+  --primary-foreground: #18181b;       /* Dark text on white primary buttons */
 
-  /* Muted & Secondary Elements */
-  --muted: #27272a;
-  --muted-foreground: #a1a1aa;
+  /* 2. Secondary Button */
+  --secondary: #27272a;                /* Dark gray surface for "Cancel" / secondary buttons */
+  --secondary-foreground: #fafafa;     /* Crisp white text so secondary buttons don't look disabled */
 
-  /* Borders & Inputs */
-  --border: #27272a;
-  --input: #27272a;
+  /* 3. Brand / Promo Button & Active States */
+  --accent: #10b981;                   /* Emerald accent stays vibrant in dark mode */
+  --accent-foreground: #ffffff;        /* White text on emerald accent elements */
 
-  /* Brand Accent & Feedback */
-  --accent: #10b981;
-  --accent-foreground: #ffffff;
-  --destructive: #f87171;
+  /* 4. Danger / Destructive Button */
+  --destructive: #f87171;              /* Softened coral-red for better legibility on dark surfaces */
+  --destructive-foreground: #09090b;   /* Dark text for maximum contrast on #f87171 red buttons */
 
-  /* Header & Navigation */
-  --header-background: #000000;
-  --header-foreground: #fafafa;
+  /* ------------------------------------------------------------------------ */
+  /* GROUP C: NOT FOR BUTTONS (Surfaces, Layout Chrome & Passive Text)        */
+  /* ------------------------------------------------------------------------ */
 
-  /* Footer */
-  --footer-background: #000000;
-  --footer-foreground: #a1a1aa;
+  /* 1. Page Canvas */
+  --background: #09090b;               /* Deep zinc page background */
+  --foreground: #fafafa;               /* Crisp off-white primary text */
+
+  /* 2. Cards & Containers */
+  --card: #121215;                     /* Slightly elevated dark surface to separate cards from body */
+  --card-foreground: #fafafa;          /* Primary text inside dark cards */
+
+  /* 3. Floating Overlays */
+  --popover: #121215;                  /* Floating menus and modal surfaces */
+  --popover-foreground: #fafafa;       /* Text inside dark floating overlays */
+
+  /* 4. Passive & Disabled States */
+  --muted: #27272a;                    /* Subtle dark backgrounds for wells, skeletons, disabled buttons */
+  --muted-foreground: #a1a1aa;         /* Faded zinc gray for captions, timestamps, and disabled text */
+
+  /* 5. Layout Chrome (Header & Footer) */
+  --header-background: #000000;        /* True black header surface */
+  --header-foreground: #fafafa;        /* High-contrast header text and icons */
+  --footer-background: #000000;        /* True black footer surface */
+  --footer-foreground: #a1a1aa;        /* Muted gray footer links and copyright text */
+
+  /* 6. Borders, Form Inputs & Accessibility Focus Rings */
+  --border: #27272a;                   /* Subtle dark structural borders for cards and dividers */
+  --input: #27272a;                    /* Form control & Outline button borders in dark mode */
+  --ring: #d4d4d8;                     /* Light gray focus ring for keyboard navigation */
 }
 
-/* -------------------------------------------------------------------------- */
-/* 3. Tailwind CSS v4 Theme Registration                                      */
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* 3. TAILWIND CSS v4 THEME REGISTRATION                                      */
+/* Maps CSS variables to Tailwind utility classes (bg-*, text-*, border-*)    */
+/* ========================================================================== */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-header: var(--header-background);
-  --color-header-foreground: var(--header-foreground);
-  --color-footer: var(--footer-background);
-  --color-footer-foreground: var(--footer-foreground);
-  --radius-base: var(--radius);
+  /* ------------------------------------------------------------------------ */
+  /* GROUP A: TYPOGRAPHY & GEOMETRY UTILITIES                                 */
+  /* Classes: font-sans, font-mono, rounded-base                              */
+  /* ------------------------------------------------------------------------ */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+  --radius-base: var(--radius);
+
+  /* ------------------------------------------------------------------------ */
+  /* GROUP B: BUTTON & INTERACTIVE UTILITIES                                  */
+  /* Golden Rule: Use these for clickable buttons, links, and active badges.  */
+  /* - Primary Button:   bg-primary text-primary-foreground                   */
+  /* - Secondary Button: bg-secondary text-secondary-foreground               */
+  /* - Brand Button:     bg-accent text-accent-foreground                     */
+  /* - Danger Button:    bg-destructive text-destructive-foreground           */
+  /* - Outline Button:   border border-input bg-background hover:bg-secondary */
+  /* ------------------------------------------------------------------------ */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  /* ------------------------------------------------------------------------ */
+  /* GROUP C: NON-BUTTON UTILITIES (Surfaces, Layout, Passive Text & Borders) */
+  /* Golden Rule: Use for containers, layout chrome, static text, and lines.  */
+  /* Only use `muted` on a button when it is `disabled`.                      */
+  /* - Page Body:        bg-background text-foreground                        */
+  /* - Card Container:   bg-card text-card-foreground border border-border    */
+  /* - Dropdown/Modal:   bg-popover text-popover-foreground                   */
+  /* - Subtitles/Wells:  bg-muted text-muted-foreground                       */
+  /* - Header & Footer:  bg-header text-header-foreground / bg-footer ...     */
+  /* - Inputs & Focus:   border-input focus-visible:ring-ring                 */
+  /* ------------------------------------------------------------------------ */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-header: var(--header-background);
+  --color-header-foreground: var(--header-foreground);
+
+  --color-footer: var(--footer-background);
+  --color-footer-foreground: var(--footer-foreground);
+
+/* ------------------------------------------------------------------------ */
+  /* GROUP D: DEDICATED BORDER, INPUT & FOCUS RING UTILITIES                  */
+  /* 1. Structural Borders (NOT for buttons):                                 */
+  /*    - border-border      -> Cards, header/footer dividers, tables, modals */
+  /* 2. Interactive & Form Borders (FOR inputs & outline buttons):            */
+  /*    - border-input       -> <input>, <select>, <textarea>, Outline button */
+  /*    - border-primary     -> Active tab underlines, selected option cards  */
+  /*    - border-accent      -> Highlighted/featured cards, active badges     */
+  /*    - border-destructive -> Invalid form fields, error alert boxes        */
+  /* 3. Keyboard Focus Ring:                                                  */
+  /*    - ring-ring          -> focus-visible:ring-2 focus-visible:ring-ring  */
+  /* ------------------------------------------------------------------------ */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
 /* -------------------------------------------------------------------------- */

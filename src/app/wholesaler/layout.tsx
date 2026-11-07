@@ -55,7 +55,7 @@ export default async function WholesalerLayout({
             {bannerStatus && <OnboardingBanner status={bannerStatus} />}
 
             {/* Portal Body Shell */}
-            <div className="flex flex-1 overflow-hidden bg-neutral-50 dark:bg-black">
+            <div className="flex flex-1 overflow-hidden bg-background">
                 {/* Sidebar */}
                 <WholesalerSidebar />
 

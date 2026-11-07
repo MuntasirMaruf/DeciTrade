@@ -54,7 +54,7 @@ export default async function RetailerLayout({
             {bannerStatus && <OnboardingBanner status={bannerStatus} />}
 
             {/* Main Content */}
-            <div className="flex flex-1 flex-col bg-neutral-50 dark:bg-black">
+            <div className="flex flex-1 flex-col bg-background">
                 <div className="flex-1">{children}</div>
             </div>
         </div>

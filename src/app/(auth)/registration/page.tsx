@@ -103,17 +103,17 @@ export default function RegistrationPage() {
     return (
         <div className="text-left">
             <div className="mb-5 text-center">
-                <h1 className="text-2xl font-bold tracking-tight text-neutral-900 dark:text-neutral-100">
+                <h1 className="text-2xl font-bold tracking-tight text-foreground">
                     Create an account
                 </h1>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+                <p className="text-sm text-muted-foreground mt-1">
                     Join our wholesale and retail distribution network
                 </p>
             </div>
 
             {/* Role Selection Tabs */}
             <div className="mb-5">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
                     Select Business Type
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
@@ -121,21 +121,21 @@ export default function RegistrationPage() {
                         type="button"
                         onClick={() => setSelectedRole("WHOLESALER")}
                         className={`p-3 rounded-lg border text-left transition-all flex flex-col gap-1.5 cursor-pointer ${selectedRole === "WHOLESALER"
-                            ? "border-neutral-900 dark:border-neutral-100 bg-neutral-900/5 dark:bg-white/5 ring-1 ring-neutral-900 dark:ring-neutral-100"
-                            : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border hover:border-input"
                             }`}
                     >
                         <Building2
                             className={`w-5 h-5 ${selectedRole === "WHOLESALER"
-                                ? "text-neutral-900 dark:text-neutral-100"
-                                : "text-neutral-400"
+                                ? "text-primary"
+                                : "text-muted-foreground"
                                 }`}
                         />
                         <div>
-                            <span className="text-xs font-bold block text-neutral-900 dark:text-neutral-100">
+                            <span className="text-xs font-bold block text-foreground">
                                 Wholesaler
                             </span>
-                            <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            <span className="text-[10px] text-muted-foreground">
                                 Bulk distributor / Manufacturer
                             </span>
                         </div>
@@ -145,21 +145,21 @@ export default function RegistrationPage() {
                         type="button"
                         onClick={() => setSelectedRole("RETAILER")}
                         className={`p-3 rounded-lg border text-left transition-all flex flex-col gap-1.5 cursor-pointer ${selectedRole === "RETAILER"
-                            ? "border-neutral-900 dark:border-neutral-100 bg-neutral-900/5 dark:bg-white/5 ring-1 ring-neutral-900 dark:ring-neutral-100"
-                            : "border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700"
+                            ? "border-primary bg-primary/5 ring-1 ring-primary"
+                            : "border-border hover:border-input"
                             }`}
                     >
                         <Store
                             className={`w-5 h-5 ${selectedRole === "RETAILER"
-                                ? "text-neutral-900 dark:text-neutral-100"
-                                : "text-neutral-400"
+                                ? "text-primary"
+                                : "text-muted-foreground"
                                 }`}
                         />
                         <div>
-                            <span className="text-xs font-bold block text-neutral-900 dark:text-neutral-100">
+                            <span className="text-xs font-bold block text-foreground">
                                 Retailer
                             </span>
-                            <span className="text-[10px] text-neutral-500 dark:text-neutral-400">
+                            <span className="text-[10px] text-muted-foreground">
                                 Store owner / Merchant
                             </span>
                         </div>
@@ -168,7 +168,7 @@ export default function RegistrationPage() {
             </div>
 
             {error && (
-                <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-md flex items-start gap-2.5 text-sm text-red-700 dark:text-red-400">
+                <div className="mb-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md flex items-start gap-2.5 text-sm text-destructive">
                     <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                     <span>{error}</span>
                 </div>
@@ -180,12 +180,12 @@ export default function RegistrationPage() {
                 <div>
                     <label
                         htmlFor="business_name"
-                        className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1"
+                        className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
                     >
                         Business Name
                     </label>
                     <div className="relative">
-                        <Briefcase className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Briefcase className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                             id="business_name"
                             name="business_name"
@@ -196,7 +196,7 @@ export default function RegistrationPage() {
                                     ? "e.g. Acme Wholesale Ltd"
                                     : "e.g. Metro Supermarket"
                             }
-                            className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
+                            className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-input rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                     </div>
                 </div>
@@ -204,19 +204,19 @@ export default function RegistrationPage() {
                 <div>
                     <label
                         htmlFor="phone_number"
-                        className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1"
+                        className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
                     >
                         Phone
                     </label>
                     <div className="relative">
-                        <Phone className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Phone className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                             id="phone_number"
                             name="phone_number"
                             type="tel"
                             required
                             placeholder="+1 (555) 000-0000"
-                            className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
+                            className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-input rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                     </div>
                 </div>
@@ -224,12 +224,12 @@ export default function RegistrationPage() {
                 <div>
                     <label
                         htmlFor="email"
-                        className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1"
+                        className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
                     >
                         Email
                     </label>
                     <div className="relative">
-                        <Mail className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Mail className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                             id="email"
                             name="email"
@@ -237,7 +237,7 @@ export default function RegistrationPage() {
                             autoComplete="email"
                             required
                             placeholder="name@company.com"
-                            className="w-full pl-9 pr-3 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
+                            className="w-full pl-9 pr-3 py-2 text-sm bg-background border border-input rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                     </div>
                 </div>
@@ -245,12 +245,12 @@ export default function RegistrationPage() {
                 <div>
                     <label
                         htmlFor="password"
-                        className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1"
+                        className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
                     >
                         Password
                     </label>
                     <div className="relative">
-                        <Lock className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Lock className="w-4 h-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                             id="password"
                             name="password"
@@ -259,12 +259,12 @@ export default function RegistrationPage() {
                             required
                             minLength={6}
                             placeholder="••••••••"
-                            className="w-full pl-9 pr-10 py-2 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded-md focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-100 text-neutral-900 dark:text-neutral-100"
+                            className="w-full pl-9 pr-10 py-2 text-sm bg-background border border-input rounded-md text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                         />
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 cursor-pointer"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
                             aria-label={showPassword ? "Hide password" : "Show password"}
                         >
                             {showPassword ? (
@@ -279,7 +279,7 @@ export default function RegistrationPage() {
                 <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full mt-3 py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 dark:text-neutral-900 text-white text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                    className="w-full mt-3 py-2.5 px-4 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold rounded-md transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                 >
                     {isLoading ? (
                         <>
@@ -292,11 +292,11 @@ export default function RegistrationPage() {
                 </button>
             </form>
 
-            <div className="mt-5 text-center text-xs text-neutral-500 dark:text-neutral-400">
+            <div className="mt-5 text-center text-xs text-muted-foreground">
                 Already have an account?{" "}
                 <Link
                     href="/login"
-                    className="font-semibold text-neutral-900 dark:text-neutral-100 hover:underline"
+                    className="font-semibold text-foreground hover:underline"
                 >
                     Sign In
                 </Link>

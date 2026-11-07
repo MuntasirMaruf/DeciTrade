@@ -10,10 +10,8 @@ export default async function Header() {
         data: { user },
     } = await supabase.auth.getUser();
 
-    const businessName =
-        (user?.user_metadata?.business_name as string) ||
-        user?.email?.split("@")[0] ||
-        "Partner";
+    const userEmail =
+        (user?.user_metadata?.email as string) || "Partner";
 
     const role = user?.user_metadata?.role as "WHOLESALER" | "RETAILER" | undefined;
 
@@ -45,7 +43,7 @@ export default async function Header() {
                     <div className="flex items-center gap-2 text-sm">
                         <span className="text-muted-foreground hidden sm:inline">Hi,</span>
                         <span className="font-semibold text-header-foreground">
-                            {businessName}
+                            {userEmail}
                         </span>
                         {role && (
                             <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">

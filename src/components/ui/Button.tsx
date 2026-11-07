@@ -33,8 +33,8 @@ export default function Button({
     // 3. Variant colors
     const variantStyles = {
         primary: "bg-primary text-primary-foreground hover:opacity-90",
-        secondary: "bg-muted text-foreground hover:opacity-80",
-        outline: "border border-border text-foreground hover:bg-muted",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        outline: "border border-input bg-background text-foreground hover:bg-secondary",
     };
 
     const widthStyle = fullWidth ? "w-full" : "";

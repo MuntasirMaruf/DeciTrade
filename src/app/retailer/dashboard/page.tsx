@@ -29,14 +29,14 @@ export default function RetailerDashboardPage() {
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
                 <div>
-                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-100 dark:bg-neutral-800 text-xs font-semibold text-neutral-800 dark:text-neutral-200 mb-2">
+                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-muted text-xs font-semibold text-foreground mb-2">
                         <Store className="w-3.5 h-3.5" />
                         <span>Retailer Portal</span>
                     </div>
-                    <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900 dark:text-neutral-100">
+                    <h1 className="text-3xl font-extrabold tracking-tight text-foreground">
                         Store Dashboard
                     </h1>
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
+                    <p className="text-sm text-muted-foreground mt-1">
                         Browse wholesale catalogs, track shipments, and manage store replenishment.
                     </p>
                 </div>
@@ -44,7 +44,7 @@ export default function RetailerDashboardPage() {
                 <div>
                     <Link
                         href="/"
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 dark:text-neutral-900 text-white text-sm font-semibold transition-colors shadow-sm"
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold transition-colors shadow-sm"
                     >
                         <span>Back to Home</span>
                     </Link>
@@ -65,14 +65,14 @@ export default function RetailerDashboardPage() {
             </div>
 
             {/* Store Fulfillment Status Card */}
-            <div className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm">
-                <h2 className="text-lg font-bold tracking-tight text-neutral-900 dark:text-neutral-100 mb-2">
+            <div className="p-6 rounded-2xl border border-border bg-card text-card-foreground shadow-sm">
+                <h2 className="text-lg font-bold tracking-tight text-card-foreground mb-2">
                     Store Fulfillment Status
                 </h2>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                <p className="text-sm text-muted-foreground mb-4">
                     All inventory thresholds are within optimal range. Next scheduled delivery window opens at 2:00 PM.
                 </p>
-                <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-300">
+                <div className="p-4 rounded-xl bg-muted/50 border border-border text-xs text-muted-foreground">
                     Tip: You can submit purchase orders directly to connected wholesalers from the catalog.
                 </div>
             </div>
